@@ -17,9 +17,31 @@ The Tauri UI replaced a GPUI one on 17 November 2026. GPUI needed Win32 calls to
 
 ## Next
 
-1. Check plan limit behavior, sign-out with token revocation, and token refresh after the access token expires.
-2. Build and check on macOS, X11 and Wayland, including the card's focus behavior and tray menus.
-3. Prove sources against real servers: calendar availability (for example, "are you free Monday?" in a chat), a team thread or document lookup, and public research. Add OAuth sign-in for remote MCP servers, with tokens in the credential store. Servers without automatic client registration, such as GitHub, need a pre-registered OAuth app.
-4. Evaluate OCR, accessibility text and local image change detection as triggers for automatic cards. Count model and tool requests, suppress duplicates and limit background use. Keep the shortcut as a manual trigger.
+Work through these in order unless something more urgent comes up. Tick items off here as they land.
 
-The first daily-use trial should measure how often cards arrive in time to help, how often they interrupt, and how much usage they consume. Set the automatic trigger defaults from that trial.
+### Ready for other people
+
+- [ ] **Release build.** Turn on Tauri bundling for MSI or NSIS, DMG, and AppImage or deb. Add code signing and an auto-updater, because unsigned builds are blocked by SmartScreen and Gatekeeper.
+- [ ] **Settings screen.** Change the capture shortcut and model, start at login, and manage sources without editing `mcp.json` by hand.
+- [ ] **Account edge cases.** Check behavior at the plan's usage limit, token refresh after the access token expires, and sign-out with token revocation.
+- [ ] **macOS and Linux.** Build and check on macOS, X11 and Wayland: the card staying out of focus, screen-recording permission on macOS, WebKitGTK and the tray on Linux, and `context capture` on Wayland.
+
+### Easy sources
+
+- [ ] **OAuth for remote MCP servers.** Show *Needs sign-in* with a **Sign in** button when a server answers 401. Use Client ID Metadata Documents (CIMD), falling back to dynamic client registration or a pre-registered client, and keep tokens in the credential store. GitHub's server needs a registered GitHub OAuth app.
+- [ ] **Source catalog.** A curated list plus search backed by the [MCP Registry](https://registry.modelcontextprotocol.io). Show a form for each server's settings, with secrets kept in the credential store. Consider `.mcpb` bundles for local servers.
+- [ ] **Built-in calendar connectors.** Google Calendar and Microsoft 365 with one-click, read-only sign-in, exposed to the model as tools. This needs a Google Cloud project and OAuth verification before a public release.
+- [ ] **Suggestions on the card.** When the screen asks something no source can answer, offer the connector, for example *Connect Google Calendar to check this*.
+
+### Product depth
+
+- [ ] **Follow-up questions** on a card or a saved result.
+- [ ] **Automatic cards.** Evaluate OCR, accessibility text and local image change detection as triggers. Count model and tool requests, suppress duplicates and limit background use. Keep the shortcut as a manual trigger. Set the defaults from a daily-use trial that measures how often cards arrive in time to help, how often they interrupt, and how much usage they consume.
+- [ ] **Privacy controls.** Apps that are never captured, an option not to save screenshots, and history that clears after a set number of days.
+- [ ] **More model providers**, such as an API key for Claude or OpenAI, alongside the ChatGPT plan.
+
+### Cleanup
+
+- [ ] Replace the demo calendar in the local `mcp.json`, which points at a temporary folder, with a real source or remove it.
+- [ ] Review the light theme in both windows.
+- [ ] Add a `.gitattributes` file so line endings stay consistent across platforms.
