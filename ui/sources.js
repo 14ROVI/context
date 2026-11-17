@@ -29,9 +29,9 @@ export function renderSources(state, preset) {
     connected(sources, catalog.busy),
     catalog.signInPrompt && h("p", { class: "note", role: "status" }, catalog.signInPrompt),
     h("div", { class: "label" }, "Add a source"),
-    h("div", { class: "catalog" }, catalog.featured.map((entry) => card(entry, sources, catalog.busy, preset))),
     searchBox(catalog),
     results(catalog, sources),
+    h("div", { class: "catalog" }, catalog.featured.map((entry) => card(entry, sources, catalog.busy, preset))),
     h(
       "p",
       { class: "note" },
