@@ -15,9 +15,29 @@ body {
   display: flex;
   flex: none;
   flex-direction: column;
-  width: clamp(240px, 22vw, 340px);
+  width: var(--sidebar-width, clamp(240px, 22vw, 340px));
+  max-width: 50vw;
   border-right: 1px solid var(--border);
   background: var(--sidebar);
+}
+
+/* A thin strip over the sidebar's edge that drags to resize it. */
+#resizer {
+  flex: none;
+  position: relative;
+  z-index: 1;
+  width: 7px;
+  margin-left: -4px;
+  margin-right: -3px;
+  cursor: col-resize;
+}
+
+#resizer:hover::after,
+#resizer.dragging::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px 0 3px;
+  background: var(--accent);
 }
 
 .capture {
@@ -33,9 +53,12 @@ body {
 
 .hint {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px 6px;
+  text-align: center;
+  white-space: nowrap;
   color: var(--subtle);
   font-size: 12px;
 }
@@ -124,6 +147,23 @@ body {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.account .profile {
+  margin: -6px -8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account .profile:hover,
+.account .profile.active {
+  background: var(--hover);
 }
 
 .account .email {
@@ -250,7 +290,8 @@ body {
   line-height: 23px;
 }
 
-.details p {
+.details p,
+.details li {
   margin: 0;
 }
 
@@ -424,12 +465,6 @@ body {
   font: 13px var(--font);
 }
 
-textarea.field {
-  width: 100%;
-  resize: vertical;
-  line-height: 20px;
-}
-
 .field:focus {
   outline: 2px solid var(--accent-soft);
   border-color: var(--accent);
@@ -479,6 +514,44 @@ textarea.field {
   color: var(--muted);
   font-size: 12px;
   line-height: 18px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 2px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.tag button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tag button:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
 .preset {

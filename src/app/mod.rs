@@ -2,8 +2,8 @@
 //! the windows, tray, shortcut, watcher and worker. The worker thread runs the
 //! blocking work. The pages in `ui/` render the state the controller publishes.
 
-mod card;
 mod commands;
+mod notify;
 mod tray;
 mod watch;
 mod worker;
@@ -19,14 +19,12 @@ use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
 use crate::Result;
-use crate::capture::Focus;
 use crate::history::{ContextText, Entry, History};
 use crate::model::{Answer, Assistant, Fix, NeedsAction};
 use crate::settings::{Provider, Settings};
 use crate::sources::catalog::{self, Entry as CatalogEntry};
 use crate::sources::{self, SourceStatus, Sources};
 
-pub use card::CardView;
 use worker::{Job, Report};
 
 /// How long to wait after hiding Context before capturing what is behind it.
@@ -111,13 +109,6 @@ pub enum FixView {
 impl Problem {
     fn sign_in(&self) -> bool {
         matches!(self.fix, Some(FixView::SignIn))
-    }
-
-    pub fn usage_url(&self) -> Option<String> {
-        match &self.fix {
-            Some(FixView::Usage(url)) => Some(url.clone()),
-            _ => None,
-        }
     }
 }
 
@@ -228,7 +219,6 @@ struct ModelsView {
 pub struct Shared {
     events: Sender<Event>,
     snapshot: Mutex<Snapshot>,
-    card: Mutex<Option<CardView>>,
 }
 
 impl Shared {
@@ -283,7 +273,6 @@ pub fn run(first: Launch) -> Result<()> {
     let shared = Arc::new(Shared {
         events: events.clone(),
         snapshot: Mutex::new(snapshot),
-        card: Mutex::new(None),
     });
 
     let relaunch = events.clone();
@@ -325,7 +314,6 @@ pub fn run(first: Launch) -> Result<()> {
                 watched,
                 account: Account::Checking,
                 capturing: false,
-                card_opened: false,
                 notice_id: 0,
                 events,
                 jobs,
@@ -374,8 +362,6 @@ struct Controller {
     watched: Arc<RwLock<Settings>>,
     account: Account,
     capturing: bool,
-    /// Whether the current capture has shown its card yet.
-    card_opened: bool,
     notice_id: u64,
     events: Sender<Event>,
     jobs: Sender<Job>,
@@ -548,13 +534,12 @@ impl Controller {
                 self.account = Account::SignedOut;
                 self.notify(message, false);
             }
-            Report::Captured(focus) => {
-                self.card_opened = true;
-                card::show(&self.app, &self.shared, card::Phase::Thinking, &focus);
+            Report::Captured { quiet } => {
+                self.menu.set_status(Some("Reading your screen…"));
+                notify::searching(&self.app, quiet);
             }
-            Report::Progress(status) => card::set_status(&self.app, &self.shared, status),
+            Report::Progress(status) => self.menu.set_status(Some(&status)),
             Report::Analysis {
-                focus,
                 quiet,
                 result,
                 screenshot,
@@ -562,7 +547,9 @@ impl Controller {
                 if !quiet {
                     self.capturing = false;
                 }
-                self.finish_analysis(focus, quiet, result, screenshot);
+                self.menu.set_status(None);
+                notify::searching_done();
+                self.finish_analysis(quiet, result, screenshot);
                 self.publish();
             }
             Report::Sources(servers, problem) => self.update(|snapshot| {
@@ -637,62 +624,41 @@ impl Controller {
 
     fn finish_analysis(
         &mut self,
-        focus: Focus,
         quiet: bool,
         result: std::result::Result<Answer, Problem>,
         screenshot: Option<Vec<u8>>,
     ) {
         let screenshot = screenshot.filter(|_| self.settings.save_screenshots);
-        let phase = match result {
+        match result {
             Ok(Answer {
-                text: Some(response),
+                text,
                 sources,
                 needs,
-            }) => match ContextText::from_response(&response) {
+            }) => match text.as_deref().and_then(ContextText::from_response) {
                 Some(text) => {
-                    let entry = self
-                        .history
-                        .push(text, focus.app.clone(), sources, screenshot);
+                    let entry = self.history.push(text, sources, screenshot);
                     self.history.prune(self.settings.history_days);
-                    card::Phase::Ready { entry, needs }
+                    notify::answer(&self.app, &entry);
                 }
-                None => card::Phase::Empty { needs },
+                // Automatic checks only speak up when they found something.
+                None if !quiet => notify::empty(&self.app, needs.as_deref()),
+                None => {}
             },
-            Ok(Answer {
-                text: None, needs, ..
-            }) => card::Phase::Empty { needs },
             Err(problem) => {
                 if problem.sign_in() {
                     self.account = Account::SignedOut;
                 }
-                card::Phase::Problem { problem }
-            }
-        };
-        if quiet {
-            // Automatic checks only speak up when they found something.
-            match phase {
-                card::Phase::Ready { .. } if !card::is_open(&self.shared) => {
-                    card::show(&self.app, &self.shared, phase, &focus);
-                }
-                card::Phase::Problem { problem } => {
+                if quiet {
                     crate::debug(format_args!("automatic check failed: {}", problem.message));
+                } else {
+                    notify::problem(&self.app, &problem);
+                    self.notify(problem.message, true);
                 }
-                _ => {}
             }
-            return;
-        }
-        // Update the card the user is watching, or show one if the capture
-        // failed before a card opened. A card the user dismissed stays closed:
-        // results still land in history and problems in the main window.
-        if card::is_open(&self.shared) || !self.card_opened {
-            card::show(&self.app, &self.shared, phase, &focus);
-        } else if let card::Phase::Problem { problem } = phase {
-            self.notify(problem.message, true);
         }
     }
 
     fn open(&mut self, selection: Option<Uuid>) {
-        card::close(&self.app, &self.shared);
         if let Some(window) = self.app.get_webview_window(MAIN) {
             let _ = window.unminimize();
             let _ = window.show();
@@ -712,12 +678,8 @@ impl Controller {
                 message: "Connect ChatGPT so Context can look at your screen.".into(),
                 fix: Some(FixView::SignIn),
             };
-            card::show(
-                &self.app,
-                &self.shared,
-                card::Phase::Problem { problem },
-                &Focus::default(),
-            );
+            notify::problem(&self.app, &problem);
+            self.notify(problem.message, true);
             return;
         }
         // Context itself is in front, so step aside and capture what is behind it.
@@ -742,8 +704,6 @@ impl Controller {
     }
 
     fn begin_capture(&mut self) {
-        card::close(&self.app, &self.shared);
-        self.card_opened = false;
         if self.submit(Job::Analyze) {
             self.capturing = true;
             self.publish();
@@ -757,12 +717,7 @@ impl Controller {
             Provider::ChatGpt => matches!(self.account, Account::SignedIn(_)),
             _ => true,
         };
-        if !self.settings.auto_cards
-            || !ready
-            || self.capturing
-            || card::is_open(&self.shared)
-            || self.settings.excludes(app)
-        {
+        if !self.settings.auto_cards || !ready || self.capturing || self.settings.excludes(app) {
             return;
         }
         self.submit(Job::AutoCandidate(text));
@@ -825,7 +780,6 @@ impl Controller {
         if self.account == Account::Connecting {
             return;
         }
-        card::close(&self.app, &self.shared);
         if self.submit(Job::SignIn) {
             self.account = Account::Connecting;
             self.notify(

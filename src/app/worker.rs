@@ -9,7 +9,7 @@ use async_channel::{Receiver, Sender};
 
 use super::{Event, Problem};
 use crate::Result;
-use crate::capture::{self, Focus};
+use crate::capture;
 use crate::model::{Answer, Assistant, Fix, Request, needs};
 use crate::settings::{Provider, Settings};
 use crate::sources::catalog::{self, Added, Entry as CatalogEntry};
@@ -44,11 +44,14 @@ pub enum Job {
 /// What the worker reports back.
 pub enum Report {
     Account(Option<String>),
-    Captured(Focus),
-    /// A short status for the card while the model works, such as "Checking calendar…".
+    /// The screen was captured and is about to be sent. `quiet` marks an
+    /// automatic check.
+    Captured {
+        quiet: bool,
+    },
+    /// A short status while the model works, such as "Checking calendar…".
     Progress(String),
     Analysis {
-        focus: Focus,
         quiet: bool,
         result: std::result::Result<Answer, Problem>,
         /// The JPEG that was analyzed, kept with a saved result.
@@ -201,7 +204,7 @@ fn sources_report(sources: &Sources) -> Report {
 const AUTOMATIC_PER_HOUR: usize = 6;
 
 /// Captures and asks. `trigger` is the new text behind an automatic check,
-/// which runs quietly: no progress card, and a card only if there is an answer.
+/// which runs quietly: it says it is searching, then speaks again only with an answer.
 fn analyze(
     assistant: &mut Assistant,
     sources: &Sources,
@@ -210,39 +213,39 @@ fn analyze(
     send: &impl Fn(Report) -> bool,
 ) -> bool {
     let quiet = trigger.is_some();
-    let failed = |focus, error: Box<dyn std::error::Error + Send + Sync>| Report::Analysis {
-        focus,
+    let failed = |error: Box<dyn std::error::Error + Send + Sync>| Report::Analysis {
         quiet,
         result: Err(error.into()),
         screenshot: None,
     };
     if let Err(error) = assistant.ensure_ready(settings) {
-        return send(failed(Focus::default(), error));
+        return send(failed(error));
     }
     let snapshot = match capture::take() {
         Ok(snapshot) => snapshot,
-        Err(error) => return send(failed(Focus::default(), error)),
+        Err(error) => return send(failed(error)),
     };
-    let focus = snapshot.focus.clone();
     // The capture is dropped here, before anything leaves the computer.
-    if let Some(app) = focus.app.as_deref().filter(|app| settings.excludes(app)) {
+    if let Some(app) = snapshot
+        .focus
+        .app
+        .as_deref()
+        .filter(|app| settings.excludes(app))
+    {
         let message = format!("Context doesn't look at {app}. You excluded it in Settings.");
-        return send(failed(focus, needs(Fix::Excluded, message)));
+        return send(failed(needs(Fix::Excluded, message)));
     }
-    if !quiet && !send(Report::Captured(focus.clone())) {
+    if !send(Report::Captured { quiet }) {
         return false;
     }
     let progress = |status: String| {
-        if !quiet {
-            send(Report::Progress(status));
-        }
+        send(Report::Progress(status));
     };
     let request = Request::capture(&snapshot, trigger);
     let result = assistant
         .ask(&request, sources, &progress, settings)
         .map_err(Problem::from);
     send(Report::Analysis {
-        focus,
         quiet,
         result,
         screenshot: Some(snapshot.jpeg),

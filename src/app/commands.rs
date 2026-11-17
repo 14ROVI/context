@@ -4,10 +4,10 @@
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, State, Wry, ipc::Invoke};
+use tauri::{State, Wry, ipc::Invoke};
 use uuid::Uuid;
 
-use super::{CardView, Command, Shared, Snapshot, card};
+use super::{Command, Shared, Snapshot};
 use crate::history;
 use crate::settings::{Provider, Settings};
 
@@ -16,7 +16,6 @@ type SharedState = Arc<Shared>;
 pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         get_state,
-        get_card,
         get_screenshot,
         capture,
         sign_in,
@@ -25,13 +24,7 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         edit_sources,
         reload_sources,
         dismiss_notice,
-        open_entry,
-        open_main,
-        copy_text,
-        card_resize,
-        card_close,
         open_settings,
-        open_usage,
         save_settings,
         set_api_key,
         list_models,
@@ -46,11 +39,6 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
 #[tauri::command]
 fn get_state(shared: State<'_, SharedState>) -> Option<Snapshot> {
     shared.snapshot.lock().ok().map(|snapshot| snapshot.clone())
-}
-
-#[tauri::command]
-fn get_card(shared: State<'_, SharedState>) -> Option<CardView> {
-    card::current(&shared)
 }
 
 /// The screenshot saved with an entry, as a data URL for an `<img>`.
@@ -103,46 +91,10 @@ fn dismiss_notice(shared: State<'_, SharedState>, id: u64) {
     shared.send(Command::DismissNotice(id));
 }
 
-#[tauri::command]
-fn open_entry(shared: State<'_, SharedState>, id: Uuid) {
-    shared.send(Command::Open(Some(id)));
-}
-
-#[tauri::command]
-fn open_main(shared: State<'_, SharedState>) {
-    shared.send(Command::Open(None));
-}
-
-/// Copies text without needing page focus, which the card never has.
-#[tauri::command]
-fn copy_text(text: String) -> Result<(), String> {
-    arboard::Clipboard::new()
-        .and_then(|mut clipboard| clipboard.set_text(text))
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn card_resize(app: AppHandle, shared: State<'_, SharedState>, height: f64) -> Result<(), String> {
-    card::fit(&app, &shared, height.clamp(60., 600.)).map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn card_close(app: AppHandle, shared: State<'_, SharedState>) {
-    card::close(&app, &shared);
-}
-
 /// Opens Settings in the main window, optionally searching sources for `search`.
 #[tauri::command]
 fn open_settings(shared: State<'_, SharedState>, search: Option<String>) {
     shared.send(Command::OpenSettings(search));
-}
-
-/// Opens the usage page for the problem the card shows. The page cannot
-/// choose the address; it comes from the problem the app created.
-#[tauri::command]
-fn open_usage(shared: State<'_, SharedState>) -> Result<(), String> {
-    let url = card::usage_url(&shared).ok_or("There is no usage page to open.")?;
-    open::that_detached(url).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

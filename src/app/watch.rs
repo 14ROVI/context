@@ -297,7 +297,7 @@ fn normalize(line: &str) -> String {
 /// Well-known games and their launchers, in lower case. The desktop reports a
 /// program's description where it has one, such as "League of Legends", and
 /// its file name without `.exe` otherwise, so both are listed. In-game chat is
-/// full of questions that are not for Context, and a card over a game
+/// full of questions that are not for Context, and a notification over a game
 /// interrupts it. Names match exactly, so "rust" would not match "rustrover".
 const GAMES: &[&str] = &[
     // Riot

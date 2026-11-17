@@ -2,6 +2,7 @@
 // screenshot, connected sources and the account.
 
 import { button, dots, h, invoke, keys, listen, logo } from "./dom.js";
+import { inline, markdown } from "./markdown.js";
 import { renderSettings } from "./settings.js";
 import { renderSources } from "./sources.js";
 
@@ -25,6 +26,8 @@ let shownKey = null;
 let noticeTimer = null;
 /** Bumped when a page module needs a redraw without a state change. */
 let rerenders = 0;
+setUpResizer();
+
 document.addEventListener("context-rerender", () => {
   rerenders += 1;
   renderMain();
@@ -84,7 +87,7 @@ function shortcutHint() {
   const { shortcut } = state;
   switch (shortcut.kind) {
     case "registered":
-      return h("div", { class: "hint" }, "or press", keys(shortcut.keys));
+      return h("div", { class: "hint" }, h("span", {}, "or press"), keys(shortcut.keys));
     case "external":
       return h("div", { class: "hint" }, "Bind “context capture” to a shortcut");
     case "unavailable":
@@ -131,7 +134,7 @@ function historyList() {
       day = label;
       list.append(h("div", { class: "day" }, label));
     }
-    const meta = entry.app ? `${entry.app} · ${clock(time)}` : clock(time);
+    const meta = clock(time);
     list.append(
       h(
         "button",
@@ -149,17 +152,22 @@ function accountPanel() {
   let who;
   switch (account.state) {
     case "signedIn":
-      who = h(
+      // The profile row is the way into Settings.
+      return h(
         "div",
-        { class: "who" },
-        h("span", { class: "avatar" }, account.email.slice(0, 1).toUpperCase()),
+        { class: "account" },
         h(
-          "div",
-          { style: { "min-width": "0" } },
-          h("div", { class: "email truncate" }, account.email),
+          "button",
+          {
+            type: "button",
+            class: view === "settings" ? "who profile active" : "who profile",
+            title: "Settings",
+            onclick: () => openSettings(null),
+          },
+          h("span", { class: "avatar" }, account.email.slice(0, 1).toUpperCase()),
+          h("span", { class: "email truncate" }, account.email),
         ),
       );
-      break;
     case "signedOut":
       who = h(
         "div",
@@ -179,6 +187,53 @@ function accountPanel() {
     who,
     button("Settings", view === "settings" ? "ghost small active" : "ghost small", () => openSettings(null)),
   );
+}
+
+/**
+ * Lets the sidebar's edge be dragged to resize it. The width is kept in
+ * local storage; double-clicking the edge goes back to the default.
+ */
+function setUpResizer() {
+  const KEY = "sidebar-width";
+  const resizer = document.getElementById("resizer");
+  const apply = (width) => {
+    if (width) document.body.style.setProperty("--sidebar-width", `${width}px`);
+    else document.body.style.removeProperty("--sidebar-width");
+  };
+  const store = (width) => {
+    try {
+      if (width) localStorage.setItem(KEY, String(width));
+      else localStorage.removeItem(KEY);
+    } catch {}
+  };
+  try {
+    apply(Number(localStorage.getItem(KEY)) || null);
+  } catch {}
+
+  resizer.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    resizer.setPointerCapture(event.pointerId);
+    resizer.classList.add("dragging");
+    let width = null;
+    const move = (e) => {
+      width = Math.round(Math.min(Math.max(e.clientX, 200), 520, window.innerWidth / 2));
+      apply(width);
+    };
+    const end = () => {
+      resizer.classList.remove("dragging");
+      resizer.removeEventListener("pointermove", move);
+      if (width) store(width);
+    };
+    resizer.addEventListener("pointermove", move);
+    resizer.addEventListener("pointerup", end, { once: true });
+    resizer.addEventListener("pointercancel", end, { once: true });
+  });
+  // Stops the drag from selecting text in the main area.
+  resizer.addEventListener("mousedown", (event) => event.preventDefault());
+  resizer.addEventListener("dblclick", () => {
+    apply(null);
+    store(null);
+  });
 }
 
 // Main area
@@ -254,8 +309,8 @@ function detail(entry) {
     {},
     h("div", { class: "when" }, when),
     h("h1", {}, entry.text.headline),
-    entry.text.summary && h("p", { class: "summary" }, entry.text.summary),
-    paragraphs.length > 0 && h("div", { class: "details" }, paragraphs.map((text) => h("p", {}, text))),
+    entry.text.summary && h("p", { class: "summary" }, inline(entry.text.summary)),
+    entry.text.details && h("div", { class: "details markdown" }, markdown(entry.text.details)),
     shot && [h("div", { class: "shot-label" }, "What Context saw"), h("img", { class: "shot", src: shot, alt: "The screen Context captured" })],
     h("div", { class: "provenance" }, provenance(entry.sources ?? [])),
   );

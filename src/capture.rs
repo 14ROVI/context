@@ -24,9 +24,6 @@ pub struct Snapshot {
 pub struct Focus {
     pub app: Option<String>,
     pub title: Option<String>,
-    /// Top-left corner of the captured display in physical pixels, so the
-    /// card can open on the same display.
-    pub display_origin: Option<(i32, i32)>,
 }
 
 pub fn take() -> Result<Snapshot> {
@@ -55,7 +52,6 @@ pub fn take() -> Result<Snapshot> {
             .and_then(|w| w.title().ok())
             .map(|title| title.trim().to_owned())
             .filter(|title| !title.is_empty()),
-        display_origin: monitor.x().ok().zip(monitor.y().ok()),
     };
     Ok(Snapshot {
         jpeg: encode(DynamicImage::ImageRgba8(frame))?,

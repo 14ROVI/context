@@ -4,11 +4,10 @@ version = "0.3.0"
 edition = "2024"
 description = "A desktop assistant that brings relevant information into view."
 
-# Every dependency below is cross-platform. Tauri, `keyring` and `xcap` choose
-# their own Windows, macOS or Linux backend, so Context itself does not branch
-# on the target OS.
+# Every dependency below is cross-platform. Tauri, `keyring`, `notify-rust` and
+# `xcap` choose their own Windows, macOS or Linux backend, so Context itself
+# barely branches on the target OS.
 [dependencies]
-arboard = { version = "3", default-features = false }
 async-channel = "2"
 base64 = "0.22"
 chrono = "0.4"
@@ -17,6 +16,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 ocrs = "0.14"
 open = "5"
+notify-rust = "4"
 openidconnect = { version = "4.1", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 ring = "0.17"

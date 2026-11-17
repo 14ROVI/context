@@ -15,17 +15,27 @@ pub struct ContextText {
 }
 
 impl ContextText {
-    /// Splits the model's plain-text answer into headline, summary and details.
+    /// Splits the model's answer into headline, summary and details. The
+    /// details keep their line breaks, since the views render them as Markdown.
     pub fn from_response(response: &str) -> Option<Self> {
-        let mut lines = response
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty());
-        let headline = shorten(lines.next()?, 96);
-        let summary = lines
-            .next()
-            .map_or_else(String::new, |line| shorten(line, 220));
-        let details = shorten(&lines.collect::<Vec<_>>().join("\n\n"), 900);
+        /// Takes the next non-empty line and returns it with the text after it.
+        fn next_line(text: &str) -> Option<(&str, &str)> {
+            let text = text.trim_start();
+            if text.is_empty() {
+                return None;
+            }
+            let (line, rest) = text.split_once('\n').unwrap_or((text, ""));
+            Some((line.trim(), rest))
+        }
+        let (headline, rest) = next_line(response)?;
+        // The headline is shown as plain text, so drop heading and bold marks.
+        let headline = shorten(
+            headline.trim_start_matches('#').trim().trim_matches('*'),
+            96,
+        );
+        let (summary, rest) = next_line(rest).unwrap_or(("", ""));
+        let summary = shorten(summary, 220);
+        let details = shorten(rest.trim(), 900);
         Some(Self {
             headline,
             summary,
@@ -63,9 +73,6 @@ fn shorten(text: &str, max_chars: usize) -> String {
 pub struct Entry {
     pub id: Uuid,
     pub created_at: i64,
-    /// The app that was in focus, when the desktop reports it.
-    #[serde(default)]
-    pub app: Option<String>,
     pub text: ContextText,
     /// Connected sources the model consulted, such as `calendar`.
     #[serde(default)]
@@ -107,7 +114,6 @@ impl History {
     pub fn push(
         &mut self,
         text: ContextText,
-        app: Option<String>,
         sources: Vec<String>,
         screenshot: Option<Vec<u8>>,
     ) -> Entry {
@@ -121,7 +127,6 @@ impl History {
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |time| time.as_secs() as i64),
-            app,
             text,
             sources,
             has_screenshot,

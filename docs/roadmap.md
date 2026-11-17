@@ -6,7 +6,7 @@
 
 - A Tauri 2 app on cross-platform crates for capture, shortcuts, the tray, secret storage and MCP, with HTML pages for the windows. The only OS-specific code is one Windows process flag, described in [Architecture](architecture.md#cross-platform-approach).
 - Whole-display capture on demand, with focused-app metadata, analyzed through [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source).
-- A corner card that shows progress, the answer, *nothing to add* or a problem, without taking focus.
+- Native notifications for the answer, *nothing to add* or a problem, with progress in the tray tooltip.
 - A main window with onboarding, day-grouped encrypted history with the screenshot behind each result, and clear.
 - `context capture` for desktops where apps cannot register global shortcuts.
 - [Sources](sources.md): MCP servers over stdio or HTTP that the model can query, limited to read-only tools unless the user lists others. Cards and history name the sources used.
@@ -16,6 +16,8 @@ Verified on Windows 11 on 17 November 2026 with a live ChatGPT plan. Sign-in, mo
 On the same date, Google's desktop OAuth sign-in and a real Calendar event-list request succeeded. One follow-up checked both Google Calendar and GitHub, returning the event count and the repository's current commit. Both encrypted source grants survived an app restart, with Google Calendar's one tool and GitHub's 28 tools available. Google refresh and non-empty event results have not been checked live.
 
 The Tauri UI replaced a GPUI one on 17 November 2026. GPUI needed Win32 calls to keep the card from taking focus, could not size windows to their content, and drew large images incompletely on Windows. On Windows 11 the Tauri card kept the user's app focused through a live capture, sized itself to each phase, and opened the main window on its result. The main window shows saved screenshots in full.
+
+Later that day native notifications replaced the corner card. On Windows 11 a debug build showed the answer's headline and summary as a toast, labelled *Windows PowerShell* because a debug build has no registered app ID. The installed app, macOS and Linux have not been checked.
 
 ## Next
 
@@ -34,7 +36,7 @@ Work through these in order unless something more urgent comes up. Tick items of
 - [x] **Source catalog.** Featured sources, MCP Registry search, and an add form whose secrets are stored encrypted as `${secret:…}`. Not done: `.mcpb` bundles and Docker packages.
 - [x] **Context's OAuth apps.** GitHub device flow and Google's Desktop app client are configured, their credentials are saved as repository secrets, and both browser sign-ins have completed live. GitHub token expiration is disabled. See [Sources](sources.md#contexts-oauth-apps).
 - [ ] **Built-in calendar connectors.** Google Calendar's OAuth sign-in, event-list request and persisted grant are verified live. Microsoft 365 is not started. A public Google release needs OAuth verification; the app currently allows listed test users only.
-- [x] **Suggestions on the card.** When an answer needed a source that isn't connected, the card offers **Connect calendar** and similar, which opens Settings.
+- [x] **Source suggestions.** When an answer needed a source that isn't connected, the notification names the kind to connect in Settings.
 
 ### Product depth
 

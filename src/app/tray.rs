@@ -3,7 +3,7 @@
 use async_channel::Sender;
 use tauri::menu::{Menu as TauriMenu, MenuItem, PredefinedMenuItem};
 use tauri::plugin::TauriPlugin;
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Wry};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -25,9 +25,20 @@ pub struct Menu {
     capture: MenuItem<Wry>,
     sign_in: MenuItem<Wry>,
     sign_out: MenuItem<Wry>,
+    tray: TrayIcon<Wry>,
 }
 
 impl Menu {
+    /// Shows what Context is doing in the tray tooltip, such as
+    /// "Checking calendar…". `None` goes back to the plain name.
+    pub fn set_status(&self, status: Option<&str>) {
+        let tooltip = match status {
+            Some(status) => format!("Context: {status}"),
+            None => "Context".into(),
+        };
+        let _ = self.tray.set_tooltip(Some(tooltip));
+    }
+
     pub fn set_signed_in(&self, signed_in: bool) {
         let _ = self.sign_in.set_enabled(!signed_in);
         let _ = self.sign_out.set_enabled(signed_in);
@@ -101,11 +112,12 @@ pub fn install(app: &AppHandle, events: Sender<Event>) -> tauri::Result<Menu> {
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    tray.build(app)?;
+    let tray = tray.build(app)?;
     Ok(Menu {
         capture,
         sign_in,
         sign_out,
+        tray,
     })
 }
 

@@ -2,6 +2,6 @@
   "$schema": "https://schema.tauri.app/config/2/capability",
   "identifier": "default",
   "description": "Lets Context's own pages call its commands and receive its events. No page loads remote content.",
-  "windows": ["main", "card"],
+  "windows": ["main"],
   "permissions": ["core:default"]
 }

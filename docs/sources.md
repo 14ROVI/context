@@ -2,7 +2,7 @@
 
 [Wiki home](README.md)
 
-Sources let an answer go beyond the screen. A source is an [MCP](https://modelcontextprotocol.io) server, or a connector built into Context such as Google Calendar. When the screen raises a question a source can answer, such as a friend asking whether you're free on Monday, the model calls that source's tools before it writes the card.
+Sources let an answer go beyond the screen. A source is an [MCP](https://modelcontextprotocol.io) server, or a connector built into Context such as Google Calendar. When the screen raises a question a source can answer, such as a friend asking whether you're free on Monday, the model calls that source's tools before it writes the answer.
 
 ## Add a source
 
@@ -117,7 +117,7 @@ Each capture allows up to 8 tool calls over 4 model turns, with a 20-second limi
 
 ## While Context answers
 
-The card shows what Context is checking, for example *Checking Google Calendar…*. The answer names the sources it used, on the card and in history. If the plan or model refuses tools, Context answers from the screen alone.
+The tray tooltip shows what Context is checking, for example *Checking Google Calendar…*. The answer names the sources it used in history. If the plan or model refuses tools, Context answers from the screen alone.
 
 | Code | Owns |
 | --- | --- |

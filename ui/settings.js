@@ -211,22 +211,6 @@ function shortcutSection(state) {
 
 function privacySection(state) {
   const { settings } = state;
-  const excluded = h("textarea", {
-    class: "field",
-    rows: "3",
-    placeholder: "One app per line, for example 1Password",
-    spellcheck: "false",
-    oninput: (event) => (drafts.excluded = event.target.value),
-  });
-  excluded.value = drafts.excluded ?? settings.excludedApps.join("\n");
-  excluded.addEventListener("change", (event) => {
-    drafts.excluded = null;
-    const apps = event.target.value
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    save(state, (next) => (next.excludedApps = apps));
-  });
   const retention = h(
     "select",
     {
@@ -248,9 +232,52 @@ function privacySection(state) {
     h("div", { class: "row" }, retention),
     h("p", { class: "note" }, "Each saved screenshot takes about 200 KB. You can clear history at any time."),
     h("div", { class: "label" }, "Never capture these apps"),
-    excluded,
+    excludedApps(state),
     h("p", { class: "note" }, "Context drops the capture before anything leaves your computer. Names match partially and ignore case."),
   );
+}
+
+/** The excluded apps as removable tags and a field to add one. */
+function excludedApps(state) {
+  const list = state.settings.excludedApps;
+  const has = (name) => list.some((app) => app.toLowerCase() === name.toLowerCase());
+  const add = (name) => {
+    const app = name.trim();
+    drafts.excluded = null;
+    if (app && !has(app)) save(state, (next) => next.excludedApps.push(app));
+  };
+  const remove = (app) => save(state, (next) => (next.excludedApps = next.excludedApps.filter((item) => item !== app)));
+
+  const tags = list.length
+    ? h(
+        "div",
+        { class: "tags" },
+        list.map((app) =>
+          h(
+            "span",
+            { class: "tag" },
+            h("span", { class: "truncate" }, app),
+            h("button", { type: "button", title: `Allow ${app} again`, "aria-label": `Remove ${app}`, onclick: () => remove(app) }, "×"),
+          ),
+        ),
+      )
+    : h("p", { class: "status" }, "No apps excluded. Context can capture any app.");
+
+  const input = h("input", {
+    class: "field",
+    placeholder: "App name, for example 1Password",
+    spellcheck: "false",
+    autocomplete: "off",
+    oninput: (event) => {
+      drafts.excluded = event.target.value;
+      addButton.disabled = !event.target.value.trim();
+    },
+  });
+  input.value = drafts.excluded ?? "";
+  input.addEventListener("keydown", (event) => event.key === "Enter" && add(input.value));
+  const addButton = button("Add", "secondary", () => add(input.value), { disabled: !input.value.trim() });
+
+  return [tags, h("div", { class: "row" }, input, addButton)];
 }
 
 function automaticSection(state) {

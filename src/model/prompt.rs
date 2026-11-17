@@ -14,11 +14,12 @@ pub const INSTRUCTIONS: &str = concat!(
     "never use one for something it was not built for, such as searching a code host to answer ",
     "a calendar question. Never claim to have checked something you did not. Never repeat ",
     "credentials, secrets, or unrelated personal data. ",
-    "If you cannot add anything useful, return only NONE. Otherwise return plain text without ",
-    "labels, bullets, or markdown. Line one is a headline under 70 characters. Line two is one ",
-    "sentence under 150 characters that stands on its own in a small card. Then add one or two ",
-    "short paragraphs, under 800 characters in total, with supporting details, what you checked, ",
-    "or a next step. Do not repeat the summary. ",
+    "If you cannot add anything useful, return only NONE. Otherwise return text without labels. ",
+    "Line one is a plain-text headline under 70 characters. Line two is one sentence under 150 ",
+    "characters that stands on its own in a notification. Then add one or two short paragraphs, ",
+    "under 800 characters in total, with supporting details, what you checked, or a next step. ",
+    "Lines two onward may use light Markdown where it helps: **bold**, `code` for names and ",
+    "commands, and short - bullet lists. No headings or tables. Do not repeat the summary. ",
     "Whenever you cannot verify something because no tool reads that kind of data, for ",
     "example the user's calendar when someone asks if they are free, you must end your reply ",
     "with one extra line in exactly this form: NEEDS: <kind>, where <kind> is one lowercase ",
@@ -55,7 +56,7 @@ New text that triggered this check, read by OCR and possibly imperfect:
     )
 }
 
-/// Answer text beyond this is cut, so a runaway reply cannot flood the card.
+/// Answer text beyond this is cut, so a runaway reply cannot flood the notification.
 pub const MAX_TEXT_CHARS: usize = 1_400;
 /// Model turns that may request tools before Context asks for the answer.
 pub const MAX_TOOL_ROUNDS: usize = 4;
