@@ -97,7 +97,7 @@ pub fn featured() -> Vec<Entry> {
         install: Install::Remote {
             url: "https://api.githubcopilot.com/mcp/readonly".into(),
         },
-        // Without Context's GitHub app, sign in with a personal access token.
+        // Context's GitHub app is built in; the token form is a fallback.
         fields: if github_oauth {
             Vec::new()
         } else {

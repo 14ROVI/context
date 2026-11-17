@@ -84,9 +84,13 @@ pub fn read_config() -> Result<Config> {
         .map_err(|error| format!("{CONFIG_FILE} could not be read: {error}").into())
 }
 
+/// Context's GitHub OAuth app. Device flow needs no secret, and a client ID is
+/// public, so it ships in the code.
+const GITHUB_CLIENT_ID: &str = "Ov23lim0dhPPM7VljAnZ";
+
 /// The registered app Context uses for well-known providers that cannot
-/// register clients themselves, with the scopes it asks for. Set when Context
-/// is built, or at run time for development.
+/// register clients themselves, with the scopes it asks for.
+/// `CONTEXT_GITHUB_CLIENT_ID`, at build or run time, replaces the default.
 pub fn builtin_client(issuer: &str) -> Option<(ClientId, &'static str)> {
     if issuer.trim_end_matches('/') != "https://github.com/login/oauth" {
         return None;
@@ -94,7 +98,8 @@ pub fn builtin_client(issuer: &str) -> Option<(ClientId, &'static str)> {
     let id = option_env!("CONTEXT_GITHUB_CLIENT_ID")
         .map(str::to_owned)
         .or_else(|| std::env::var("CONTEXT_GITHUB_CLIENT_ID").ok())
-        .filter(|value| !value.is_empty())?;
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| GITHUB_CLIENT_ID.to_owned());
     Some((ClientId { id, secret: None }, "repo read:org"))
 }
 

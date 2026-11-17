@@ -82,22 +82,22 @@ The built-in connector asks Google for read access to events only (`calendar.eve
 
 ## Context's OAuth apps
 
-Google and GitHub do not let apps register themselves, so Context ships its own OAuth apps. Their credentials are compiled in from environment variables, and are never committed. GitHub's device flow needs only its public client ID. Google's desktop client also requires a client secret, which cannot be confidential in a desktop app.
+Google and GitHub do not let apps register themselves, so Context ships its own OAuth apps. GitHub's device flow needs only a public client ID, so Context's (`Ov23lim0dhPPM7VljAnZ`) is in the code, in [`src/sources/mcp.rs`](../src/sources/mcp.rs). Google's credentials are compiled in from environment variables and never committed. Its desktop client also requires a client secret, which cannot be confidential in a desktop app.
 
 | Variable | App |
 | --- | --- |
 | `CONTEXT_GOOGLE_CLIENT_ID`, `CONTEXT_GOOGLE_CLIENT_SECRET` | A Google Cloud OAuth client of type **Desktop app**, in a project with the Google Calendar API enabled. The consent screen must list the `calendar.events.readonly` scope. While the app is in testing, only listed test users can sign in. A public release needs Google's verification. |
-| `CONTEXT_GITHUB_CLIENT_ID` | A GitHub OAuth app with **Enable Device Flow** checked. No client secret is needed. Keep **Token expiration** disabled under Optional features. Context asks for `repo read:org`; these OAuth scopes include write access, while Context's read-only MCP endpoint and tool policy restrict model calls. |
+| `CONTEXT_GITHUB_CLIENT_ID` (optional) | Replaces the built-in client ID. A GitHub OAuth app with **Enable Device Flow** checked. No client secret is needed. Keep **Token expiration** disabled under Optional features. Context asks for `repo read:org`; these OAuth scopes include write access, while Context's read-only MCP endpoint and tool policy restrict model calls. |
 
-The release workflow reads these as repository secrets. For a local build, set them in the shell before `cargo build`, or before launching Context. Without them, Google Calendar shows as unavailable and GitHub asks for a personal access token instead.
+The release workflow reads these as repository secrets. For a local build, set them in the shell before `cargo build`, or before launching Context. Without the Google ones, Google Calendar shows as unavailable. GitHub sign-in works in every build.
 
 For Google, use a separate Cloud project, enable the Google Calendar API, configure the consent screen and add your account as a test user, then create a **Desktop app** client. Add its ID and secret as the two repository secrets above. Google [supports loopback callbacks and PKCE for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app). While an external app is in Testing, Calendar [refresh tokens expire after seven days](https://developers.google.com/identity/protocols/oauth2#expiration); sign in again when that happens.
 
-The registered apps are **Context** on GitHub and **Context desktop** in Google Cloud project `context-515016`. The Google app remains in Testing, with the maintainer's account listed as a test user. The three repository secrets above are configured for release builds.
+The registered apps are **Context** on GitHub and **Context desktop** in Google Cloud project `context-515016`. The Google app remains in Testing, with the maintainer's account listed as a test user. The two Google repository secrets are configured for release builds.
 
 ### GitHub without OAuth
 
-GitHub's hosted MCP server also accepts a personal access token. Without Context's GitHub app, the featured GitHub entry asks for one and stores it encrypted. A fine-grained token with read access to the repositories you want, or the output of `gh auth token`, works.
+GitHub's hosted MCP server also accepts a personal access token, set as an `Authorization` header in `mcp.json`. A fine-grained token with read access to the repositories you want, or the output of `gh auth token`, works.
 
 ### Protocol versions
 
