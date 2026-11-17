@@ -1,8 +1,8 @@
 //! Screen capture through `xcap`, which handles Windows, macOS, X11 and Wayland.
 //! On Wayland the desktop's screenshot portal may ask which screen to share.
 
-use image::DynamicImage;
 use image::codecs::jpeg::JpegEncoder;
+use image::{DynamicImage, RgbaImage};
 use xcap::{Monitor, Window};
 
 use crate::Result;
@@ -63,15 +63,23 @@ pub fn take() -> Result<Snapshot> {
     })
 }
 
-/// The focused app and window title, without capturing anything. `None`
-/// when Context itself is focused or the desktop does not say.
-pub fn focused() -> Option<(String, String)> {
+/// The focused window's own pixels, for automatic cards to compare and read
+/// locally. `None` when Context itself is focused or the window is minimized.
+pub struct WindowShot {
+    pub app: String,
+    pub title: String,
+    pub image: RgbaImage,
+}
+
+pub fn focused_window_image() -> Option<WindowShot> {
     let window = focused_window()?;
-    if window.pid().ok() == Some(std::process::id()) {
+    if window.pid().ok() == Some(std::process::id()) || window.is_minimized().unwrap_or(false) {
         return None;
     }
     let app = window.app_name().ok().and_then(tidy_app_name)?;
-    Some((app, window.title().unwrap_or_default()))
+    let title = window.title().unwrap_or_default();
+    let image = window.capture_image().ok()?;
+    Some(WindowShot { app, title, image })
 }
 
 fn focused_window() -> Option<Window> {

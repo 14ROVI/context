@@ -8,8 +8,7 @@ mod tray;
 mod watch;
 mod worker;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -83,8 +82,13 @@ pub enum Command {
 pub enum Event {
     Command(Command),
     BeginCapture,
-    /// The watcher saw the user settle on a new window in this app.
-    AutoCheck(String),
+    /// The watcher saw new text that may ask the user something.
+    AutoCandidate {
+        app: String,
+        text: String,
+    },
+    /// The watcher is reading this app, or could not start.
+    Watching(std::result::Result<String, String>),
     Shortcut(ShortcutView),
     Worker(Report),
 }
@@ -154,6 +158,8 @@ pub struct Snapshot {
     /// The entry whose follow-up question is being answered.
     asking: Option<Uuid>,
     catalog: CatalogView,
+    /// The app automatic cards are watching.
+    watching: Option<String>,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -263,8 +269,7 @@ pub fn run(first: Launch) -> Result<()> {
     )?;
     let _ = jobs.try_send(Job::CheckAccount);
     let _ = jobs.try_send(Job::ReloadSources);
-    let auto_cards = Arc::new(AtomicBool::new(settings.auto_cards));
-    watch::start(auto_cards.clone(), events.clone());
+    let watched = Arc::new(RwLock::new(settings.clone()));
 
     let snapshot = Snapshot {
         account: Account::Checking,
@@ -289,6 +294,7 @@ pub fn run(first: Launch) -> Result<()> {
             featured: catalog::featured(),
             ..Default::default()
         },
+        watching: None,
     };
     let shared = Arc::new(Shared {
         events: events.clone(),
@@ -318,6 +324,8 @@ pub fn run(first: Launch) -> Result<()> {
         .setup(move |app| {
             let handle = app.handle().clone();
             open_main_window(&handle)?;
+            let models = crate::ocr::model_dir(handle.path().resource_dir().ok());
+            watch::start(watched.clone(), models, events.clone());
             let menu = tray::install(&handle, events.clone())?;
             let shortcut = tray::register_shortcut(&handle, &settings.shortcut);
             let _ = events.try_send(Event::Shortcut(shortcut));
@@ -330,7 +338,7 @@ pub fn run(first: Launch) -> Result<()> {
                 history,
                 menu,
                 settings,
-                auto_cards,
+                watched,
                 account: Account::Checking,
                 capturing: false,
                 card_opened: false,
@@ -378,7 +386,8 @@ struct Controller {
     history: History,
     menu: tray::Menu,
     settings: Settings,
-    auto_cards: Arc<AtomicBool>,
+    /// The settings the watcher reads.
+    watched: Arc<RwLock<Settings>>,
     account: Account,
     capturing: bool,
     /// Whether the current capture has shown its card yet.
@@ -406,7 +415,14 @@ impl Controller {
             }
             Event::Command(command) => self.command(command),
             Event::BeginCapture => self.begin_capture(),
-            Event::AutoCheck(app) => self.auto_check(&app),
+            Event::AutoCandidate { app, text } => self.auto_check(&app, text),
+            Event::Watching(Ok(app)) => self.update(|snapshot| snapshot.watching = Some(app)),
+            Event::Watching(Err(message)) => {
+                self.notify(message, true);
+                let mut next = self.settings.clone();
+                next.auto_cards = false;
+                self.save_settings(next);
+            }
             Event::Shortcut(shortcut) => {
                 self.menu.set_shortcut(&shortcut);
                 self.update(|snapshot| snapshot.shortcut = shortcut);
@@ -766,14 +782,15 @@ impl Controller {
     fn begin_capture(&mut self) {
         card::close(&self.app, &self.shared);
         self.card_opened = false;
-        if self.submit(Job::Analyze { quiet: false }) {
+        if self.submit(Job::Analyze) {
             self.capturing = true;
             self.publish();
         }
     }
 
-    /// Runs a quiet check when automatic cards are on and nothing else is going on.
-    fn auto_check(&mut self, app: &str) {
+    /// Passes new on-screen text to the worker's gate when automatic cards are
+    /// on and nothing else is going on.
+    fn auto_check(&mut self, app: &str, text: String) {
         let ready = match self.settings.provider {
             Provider::ChatGpt => matches!(self.account, Account::SignedIn(_)),
             _ => true,
@@ -786,7 +803,7 @@ impl Controller {
         {
             return;
         }
-        self.submit(Job::Analyze { quiet: true });
+        self.submit(Job::AutoCandidate(text));
     }
 
     fn follow_up(&mut self, id: Uuid, question: String) {
@@ -834,7 +851,12 @@ impl Controller {
                 next.start_at_login = self.settings.start_at_login;
             }
         }
-        self.auto_cards.store(next.auto_cards, Ordering::Relaxed);
+        if let Ok(mut watched) = self.watched.write() {
+            *watched = next.clone();
+        }
+        if !next.auto_cards {
+            self.update(|snapshot| snapshot.watching = None);
+        }
         if next.history_days != self.settings.history_days {
             self.history.prune(next.history_days);
         }

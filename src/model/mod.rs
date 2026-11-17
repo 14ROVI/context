@@ -65,15 +65,18 @@ pub struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    /// Asks about a fresh capture. `quiet` raises the bar for automatic checks.
-    pub fn capture(snapshot: &'a Snapshot, quiet: bool) -> Self {
+    /// Asks about a fresh capture. `trigger` is the new text that started an
+    /// automatic check; those checks get a higher bar for speaking up.
+    pub fn capture(snapshot: &'a Snapshot, trigger: Option<&str>) -> Self {
         let mut instructions = prompt::INSTRUCTIONS.to_owned();
-        if quiet {
+        let mut text = prompt::desktop_metadata(snapshot);
+        if let Some(trigger) = trigger {
             instructions.push_str(prompt::QUIET);
+            text.push_str(&prompt::trigger_note(trigger));
         }
         Self {
             instructions,
-            text: prompt::desktop_metadata(snapshot),
+            text,
             image: Some(&snapshot.jpeg),
         }
     }
@@ -184,6 +187,49 @@ impl Assistant {
         };
         self.models.insert(provider, models.clone());
         Ok(models)
+    }
+
+    /// Asks the provider's cheapest model whether new on-screen text deserves a
+    /// full check. Text only; no screenshot is sent.
+    pub fn worth_a_look(&mut self, text: &str, settings: &Settings) -> Result<bool> {
+        let reply = match settings.provider {
+            Provider::ChatGpt => {
+                let token = self.chatgpt.access_token()?;
+                let models = self.models(Provider::ChatGpt)?;
+                let model = openai::cheap_model(&models, openai::Service::Plan)?;
+                openai::quick(
+                    &self.http,
+                    &token,
+                    &model,
+                    prompt::GATE,
+                    text,
+                    openai::Service::Plan,
+                )?
+            }
+            Provider::OpenAi => {
+                let key = api_key(Provider::OpenAi)?;
+                let models = self.models(Provider::OpenAi)?;
+                let model = openai::cheap_model(&models, openai::Service::ApiKey)?;
+                openai::quick(
+                    &self.http,
+                    &key,
+                    &model,
+                    prompt::GATE,
+                    text,
+                    openai::Service::ApiKey,
+                )?
+            }
+            Provider::Anthropic => {
+                let key = api_key(Provider::Anthropic)?;
+                anthropic::quick(&self.http, &key, prompt::GATE, text)?
+            }
+        };
+        let yes = reply.trim().to_uppercase().starts_with("YES");
+        crate::debug(format_args!(
+            "automatic cards: gate answered {}",
+            reply.trim()
+        ));
+        Ok(yes)
     }
 
     /// Sends a request to the model, which may consult `sources` first.

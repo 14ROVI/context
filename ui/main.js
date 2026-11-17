@@ -76,7 +76,15 @@ function capturePanel() {
   const capture = state.capturing
     ? button([dots(), "Looking at your screen"], "primary", null, { disabled: true })
     : button("Capture screen", "primary", () => invoke("capture"));
-  return h("div", { class: "capture" }, capture, shortcutHint());
+  const watching =
+    state.settings.autoCards &&
+    h(
+      "div",
+      { class: "watching", title: "Automatic cards read new text on this computer and check it with a small model before looking closer." },
+      h("span", { class: "pulse" }),
+      state.watching ? `Automatic cards: watching ${state.watching}` : "Automatic cards on",
+    );
+  return h("div", { class: "capture" }, capture, shortcutHint(), watching);
 }
 
 function shortcutHint() {

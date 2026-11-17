@@ -5,6 +5,7 @@ mod app;
 mod capture;
 mod history;
 mod model;
+mod ocr;
 mod settings;
 mod sources;
 mod storage;

@@ -242,6 +242,40 @@ pub(super) fn analyze(
     .into())
 }
 
+/// A small text-only request that returns the model's reply, used for quick
+/// yes-or-no decisions.
+pub(super) fn quick(
+    http: &Client,
+    token: &str,
+    model: &str,
+    instructions: &str,
+    text: &str,
+    service: Service,
+) -> Result<String> {
+    let body = json!({
+        "model": model,
+        "instructions": instructions,
+        "reasoning": {"effort": "low"},
+        "store": false,
+        "stream": true,
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": text}]}],
+    });
+    send(http, token, &body)
+        .map(|turn| turn.text)
+        .map_err(|failure| failure.into_error(service))
+}
+
+/// The cheapest listed model for quick decisions: a nano or mini model when
+/// the account lists one, else the small "luna" family, else the default.
+pub(super) fn cheap_model(models: &[String], service: Service) -> Result<String> {
+    for hint in ["nano", "mini", "luna"] {
+        if let Some(model) = models.iter().find(|model| model.contains(hint)) {
+            return Ok(model.clone());
+        }
+    }
+    choose_model(models, None, service)
+}
+
 /// One streamed model response.
 struct Turn {
     text: String,

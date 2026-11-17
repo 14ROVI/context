@@ -253,7 +253,7 @@ function automaticSection(state) {
     null,
     toggle(
       "Offer cards without the shortcut (experimental)",
-      "When you settle on a new window or conversation, Context checks it quietly and shows a card only if it can help. At most 6 checks an hour, and none for excluded apps. Each check uses your plan or API usage.",
+      "Context reads new text in the focused window on this computer, for example a new message in a chat. When it looks like a question for you, a small model checks the text alone, and only then does Context look at the screen and show a card. At most 6 full checks an hour, none for excluded apps, and no repeats of the same question.",
       state.settings.autoCards,
       (value) => save(state, (next) => (next.autoCards = value)),
     ),

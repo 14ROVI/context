@@ -16,14 +16,23 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "Context",
     "shortDescription": "Answers for what's on your screen",
-    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "resources": {
+      "models/text-detection.onnx": "models/text-detection.onnx",
+      "models/text-recognition.onnx": "models/text-recognition.onnx"
     }
   }
 }

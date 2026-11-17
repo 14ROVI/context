@@ -181,6 +181,37 @@ pub fn analyze(
     Err("Claude kept asking for lookups without answering.".into())
 }
 
+/// The model for quick decisions: the current Haiku.
+pub const QUICK_MODEL: &str = "claude-haiku-5-5";
+
+/// A small text-only request that returns Claude's reply, used for quick
+/// yes-or-no decisions.
+pub fn quick(http: &Client, key: &str, system: &str, text: &str) -> Result<String> {
+    let body = json!({
+        "model": QUICK_MODEL,
+        "max_tokens": 1024,
+        "system": system,
+        "messages": [{"role": "user", "content": text}],
+        "output_config": {"effort": "low"},
+    });
+    let response = api(http, key, reqwest::Method::POST, "/messages")
+        .json(&body)
+        .send()?;
+    let status = response.status().as_u16();
+    let reply: Value = response.json().unwrap_or_default();
+    if !(200..300).contains(&status) {
+        return Err(api_error(&reply, status));
+    }
+    Ok(reply["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "text")
+        .filter_map(|block| block["text"].as_str())
+        .collect::<Vec<_>>()
+        .join(""))
+}
+
 fn base64_jpeg(jpeg: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(jpeg)

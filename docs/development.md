@@ -37,7 +37,7 @@ gh workflow run release.yml
 gh workflow run release.yml -f publish=true
 ```
 
-Each run uploads `Context_<version>_x64-setup.exe` as an artifact. With `publish=true` it also creates a draft GitHub release for the version in `tauri.conf.json`. Bump that version, and the one in `Cargo.toml`, before publishing. To build the installer locally, run `npx --yes @tauri-apps/cli@2 build --bundles nsis`. The installer is not code-signed yet, so Windows SmartScreen warns before it runs. There is no auto-updater, because a private repository's releases are not public for an updater to fetch.
+Each run uploads `Context_<version>_x64-setup.exe` as an artifact. With `publish=true` it also creates a draft GitHub release for the version in `tauri.conf.json`. Bump that version, and the one in `Cargo.toml`, before publishing. To build the installer locally, run `npx --yes @tauri-apps/cli@2 build --bundles nsis`. The installer bundles the OCR models from `models/`, which are not in git; the workflow downloads them and checks their SHA-256 hashes, and a local build needs them there too (`text-detection.onnx` and `text-recognition.onnx` from the [ocrs](https://github.com/robertknight/ocrs) project). The installer is not code-signed yet, so Windows SmartScreen warns before it runs. There is no auto-updater, because a private repository's releases are not public for an updater to fetch.
 
 ## Use Context
 
@@ -62,7 +62,7 @@ Open **Settings** at the bottom of the sidebar. Changes save right away to `sett
 | Model | A ChatGPT plan, an OpenAI API key, or an Anthropic API key for Claude. API keys are encrypted like the account and never shown again. Pick a model, or keep the default: Context picks a vision model on a plan, and Claude Opus 5.5 on Anthropic. |
 | Shortcut | Pick a preset or type one such as `Ctrl+Shift+K`. If it is taken, Context falls back to a default and says so. |
 | Privacy | Keep or skip screenshots with results, how long to keep history, and apps Context never captures. An excluded app's capture is dropped before anything is sent. |
-| Automatic cards | Experimental. Context watches which window is focused, without capturing, and runs a quiet check when you settle on a new window or conversation. A card appears only when it can help. At most 6 checks an hour, and none for excluded apps. |
+| Automatic cards | Experimental. Context notices new text in the focused window, such as a friend's question in a chat, and shows a card only when it can help. See [How automatic cards decide](architecture.md#automatic-cards). |
 | Startup | Start Context when you sign in. |
 
 On Anthropic, Context sends the Messages API's server-side refusal fallback, so a request a safety classifier declines is retried on a fallback model.

@@ -18,7 +18,8 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 | [`src/main.rs`](../src/main.rs) | Command line (`open`, `capture`), debug logging and startup. |
 | [`src/app/mod.rs`](../src/app/mod.rs) | Tauri setup, the controller thread and published state. |
 | [`src/app/worker.rs`](../src/app/worker.rs) | The worker thread: captures, model requests, follow-ups, sign-in, API keys and sources. |
-| [`src/app/watch.rs`](../src/app/watch.rs) | Experimental automatic cards: watches the focused window and asks for quiet checks. |
+| [`src/app/watch.rs`](../src/app/watch.rs) | Automatic cards: notices new text in the focused window and passes likely questions on. |
+| [`src/ocr.rs`](../src/ocr.rs) | Local text recognition with `ocrs`. |
 | [`src/app/commands.rs`](../src/app/commands.rs) | The commands the pages call. |
 | [`src/app/card.rs`](../src/app/card.rs) | The card window: creation, phases, placement and size. |
 | [`src/app/tray.rs`](../src/app/tray.rs) | Tray menu and global shortcut registration. |
@@ -51,6 +52,7 @@ Context relies on cross-platform crates and does not branch on the target OS. Ea
 | Single instance | `tauri-plugin-single-instance` | Forwards `context open` and `context capture` to the running app. |
 | Capture | `xcap` | On Wayland it goes through the desktop screenshot portal. |
 | Clipboard | `arboard` | Copies from the card, which never has focus. |
+| Text recognition | `ocrs` | Pure-Rust OCR for automatic cards. The installer bundles its two ONNX models. |
 | Start at login | `tauri-plugin-autostart` | |
 | Secrets | `keyring` + `ring` | An AES-256-GCM key in Credential Manager, the Keychain or the Secret Service. |
 | Sources | `rmcp` + `which` | MCP clients over stdio or streamable HTTP. `which` resolves launchers such as `npx.cmd`. |
@@ -62,6 +64,18 @@ The one exception is in [`sources/mcp.rs`](../src/sources/mcp.rs), which starts 
 The controller thread owns app state and handles events from the pages, tray, shortcut, single-instance plugin and worker. After each change it publishes a snapshot to the main window as a `state` event, and card changes as `card` events. Pages read the current snapshot with `get_state` or `get_card` when they load.
 
 One worker thread serializes blocking work: account checks, sign-in, sign-out, API keys, model lists, connecting sources, captures and follow-ups. It keeps its own copy of the settings, which the controller sends after each change. The worker owns the MCP connections and drives them on a small Tokio runtime. Each model turn is one request with `store: false`, and encrypted reasoning is carried between tool rounds.
+
+## Automatic cards
+
+Automatic cards are off by default. When on, each stage is cheaper than the next and passes on only what is worth it:
+
+1. **Change detection, local.** Every 2 seconds the watcher captures the focused window and compares a 192×128 greyscale thumbnail with the last one. It counts pixels that changed noticeably, so one new chat line in a large window still registers.
+2. **OCR, local.** Once the window has settled, `ocrs` reads its text, in about half a second for a chat window, and keeps lines it has not seen in that window. A newly focused window's last 8 lines count as new, so a question already waiting there is noticed.
+3. **Filter, local.** Lines that look like a question or request pass: a question mark, or phrases such as "can you" or "let me know". The same text is not passed on again within an hour, and at most 30 candidates go out an hour.
+4. **Gate, cheap model.** The worker sends only the new text, not a screenshot, to the provider's smallest model: a nano, mini or "luna" model on OpenAI, or Claude Haiku 5.5 on Anthropic. The model must answer YES or NO.
+5. **Full check.** On YES, Context captures the screen and runs the normal analysis with sources, telling the model which new text triggered it and to answer only if it can help. A card appears only with an answer, without taking focus. At most 6 full checks run an hour.
+
+Nothing leaves the computer before the gate, and excluded apps are never captured, not even locally. The sidebar shows which app automatic cards are watching.
 
 ## Pages and trust
 

@@ -32,6 +32,22 @@ jobs:
           $version = (Get-Content tauri.conf.json -Raw | ConvertFrom-Json).version
           "version=$version" >> $env:GITHUB_OUTPUT
 
+      # Automatic cards read text locally with the ocrs models, which the
+      # installer bundles. They are not in git; download and pin them here.
+      - name: Download text recognition models
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force models | Out-Null
+          $models = @{
+            "text-detection.onnx"   = "A917B23DBD9524B465DF7E922641B3FF2981623DF4DED5A0234004EF2FEE7CFE"
+            "text-recognition.onnx" = "86C145C2EDB96C8CAED5B1EBB8F44D706408922211451C309C625157DD6061C5"
+          }
+          foreach ($name in $models.Keys) {
+            Invoke-WebRequest "https://ocrs-models.s3-accelerate.amazonaws.com/$name" -OutFile "models/$name"
+            $hash = (Get-FileHash "models/$name" -Algorithm SHA256).Hash
+            if ($hash -ne $models[$name]) { throw "$name has hash $hash, expected $($models[$name])" }
+          }
+
       # The Tauri CLI bundles the installer. The pages in ui/ need no build step.
       # Context's own OAuth apps are compiled in from repository secrets. Builds
       # without them still work; those sign-ins are just unavailable.

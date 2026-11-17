@@ -3,6 +3,7 @@
 //! controller through events.
 
 use std::thread;
+use std::time::{Duration, Instant};
 
 use async_channel::{Receiver, Sender};
 use uuid::Uuid;
@@ -19,10 +20,11 @@ use crate::sources::{SourceStatus, Sources};
 /// Blocking work for the worker thread.
 pub enum Job {
     CheckAccount,
-    /// Capture and ask. `quiet` checks run without the user asking.
-    Analyze {
-        quiet: bool,
-    },
+    /// Capture and ask, as the user asked.
+    Analyze,
+    /// New on-screen text from automatic cards: ask the cheap gate model,
+    /// then run a quiet full check if it says yes.
+    AutoCandidate(String),
     FollowUp {
         entry: Entry,
         question: String,
@@ -85,6 +87,8 @@ pub fn start(
         .name("context-worker".into())
         .spawn(move || {
             let send = |report| events.send_blocking(Event::Worker(report)).is_ok();
+            // Full automatic checks in the last hour, to cap their usage.
+            let mut automatic: Vec<Instant> = Vec::new();
             while let Ok(job) = jobs.recv_blocking() {
                 let delivered = match job {
                     Job::CheckAccount => {
@@ -98,8 +102,24 @@ pub fn start(
                             .sign_out()
                             .unwrap_or_else(|error| error.to_string()),
                     )),
-                    Job::Analyze { quiet } => {
-                        analyze(&mut assistant, &sources, &settings, quiet, &send)
+                    Job::Analyze => analyze(&mut assistant, &sources, &settings, None, &send),
+                    Job::AutoCandidate(text) => {
+                        automatic.retain(|at| at.elapsed() < Duration::from_secs(3600));
+                        let worth = automatic.len() < AUTOMATIC_PER_HOUR
+                            && assistant
+                                .worth_a_look(&text, &settings)
+                                .unwrap_or_else(|error| {
+                                    crate::debug(format_args!(
+                                        "automatic cards: gate failed: {error}"
+                                    ));
+                                    false
+                                });
+                        if worth {
+                            automatic.push(Instant::now());
+                            analyze(&mut assistant, &sources, &settings, Some(&text), &send)
+                        } else {
+                            true
+                        }
                     }
                     Job::FollowUp { entry, question } => {
                         let result =
@@ -189,13 +209,19 @@ fn sources_report(sources: &Sources) -> Report {
     Report::Sources(servers, problem)
 }
 
+/// Full automatic checks allowed per hour.
+const AUTOMATIC_PER_HOUR: usize = 6;
+
+/// Captures and asks. `trigger` is the new text behind an automatic check,
+/// which runs quietly: no progress card, and a card only if there is an answer.
 fn analyze(
     assistant: &mut Assistant,
     sources: &Sources,
     settings: &Settings,
-    quiet: bool,
+    trigger: Option<&str>,
     send: &impl Fn(Report) -> bool,
 ) -> bool {
+    let quiet = trigger.is_some();
     let failed = |focus, error: Box<dyn std::error::Error + Send + Sync>| Report::Analysis {
         focus,
         quiet,
@@ -223,7 +249,7 @@ fn analyze(
             send(Report::Progress(status));
         }
     };
-    let request = Request::capture(&snapshot, quiet);
+    let request = Request::capture(&snapshot, trigger);
     let result = assistant
         .ask(&request, sources, &progress, settings)
         .map_err(Problem::from);
