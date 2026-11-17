@@ -1,0 +1,56 @@
+# Builds the Windows installer on demand. Run it from the Actions tab or with
+# `gh workflow run release.yml`. Each run uploads the installer as an artifact;
+# with "publish" set, it also creates a draft GitHub release for the version
+# in tauri.conf.json.
+name: Release (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Create a draft GitHub release with the installer
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content tauri.conf.json -Raw | ConvertFrom-Json).version
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      # The Tauri CLI bundles the installer. The pages in ui/ need no build step.
+      - name: Build installer
+        run: npx --yes @tauri-apps/cli@2 build --bundles nsis
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Context-${{ steps.version.outputs.version }}-windows
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Create draft release
+        if: ${{ inputs.publish }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          gh release create "v$env:VERSION" $installer.FullName `
+            --draft --title "Context $env:VERSION" `
+            --notes "Windows installer for Context $env:VERSION. The installer is not code-signed yet, so Windows SmartScreen may warn before it runs."
