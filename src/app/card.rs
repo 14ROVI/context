@@ -21,9 +21,17 @@ const MARGIN: f64 = 16.;
 #[serde(tag = "phase", rename_all = "camelCase")]
 pub enum Phase {
     Thinking,
-    Ready { entry: Entry },
-    Empty,
-    Problem { problem: Problem },
+    /// `needs` names a kind of source that would have helped, such as `calendar`.
+    Ready {
+        entry: Entry,
+        needs: Option<String>,
+    },
+    Empty {
+        needs: Option<String>,
+    },
+    Problem {
+        problem: Problem,
+    },
 }
 
 /// What the card page renders.
@@ -101,6 +109,16 @@ pub fn close(app: &AppHandle, shared: &Shared) {
 
 pub fn is_open(shared: &Shared) -> bool {
     shared.card.lock().is_ok_and(|card| card.is_some())
+}
+
+/// The usage page for the problem the card shows, if it offers one. Pages
+/// cannot pass a URL to open; it comes from the problem the app created.
+pub fn usage_url(shared: &Shared) -> Option<String> {
+    let card = shared.card.lock().ok()?;
+    match &card.as_ref()?.phase {
+        Phase::Problem { problem } => problem.usage_url(),
+        _ => None,
+    }
 }
 
 pub fn current(shared: &Shared) -> Option<CardView> {

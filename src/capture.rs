@@ -1,8 +1,6 @@
 //! Screen capture through `xcap`, which handles Windows, macOS, X11 and Wayland.
 //! On Wayland the desktop's screenshot portal may ask which screen to share.
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use image::DynamicImage;
 use image::codecs::jpeg::JpegEncoder;
 use xcap::{Monitor, Window};
@@ -18,13 +16,6 @@ pub struct Snapshot {
     /// The capture as JPEG. History keeps it with the result.
     pub jpeg: Vec<u8>,
     pub focus: Focus,
-}
-
-impl Snapshot {
-    /// A `data:image/jpeg;base64,…` URL for the model request.
-    pub fn data_url(&self) -> String {
-        format!("data:image/jpeg;base64,{}", STANDARD.encode(&self.jpeg))
-    }
 }
 
 /// What the desktop reports about the active window. Some desktops, such as
@@ -70,6 +61,17 @@ pub fn take() -> Result<Snapshot> {
         jpeg: encode(DynamicImage::ImageRgba8(frame))?,
         focus,
     })
+}
+
+/// The focused app and window title, without capturing anything. `None`
+/// when Context itself is focused or the desktop does not say.
+pub fn focused() -> Option<(String, String)> {
+    let window = focused_window()?;
+    if window.pid().ok() == Some(std::process::id()) {
+        return None;
+    }
+    let app = window.app_name().ok().and_then(tidy_app_name)?;
+    Some((app, window.title().unwrap_or_default()))
 }
 
 fn focused_window() -> Option<Window> {

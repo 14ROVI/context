@@ -120,12 +120,18 @@ pub fn shortcut_plugin(events: Sender<Event>) -> TauriPlugin<Wry> {
         .build()
 }
 
-/// Registers the first free capture shortcut.
-pub fn register_shortcut(app: &AppHandle) -> ShortcutView {
+/// Registers `preferred`, such as `Ctrl+Alt+Space`, replacing any earlier
+/// shortcut. If it is taken or not valid, falls back to the defaults.
+pub fn register_shortcut(app: &AppHandle, preferred: &str) -> ShortcutView {
     // Wayland compositors do not let apps grab keys. The user binds
     // `context capture` in their desktop settings instead.
     if std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()) {
         return ShortcutView::External;
+    }
+    let shortcuts = app.global_shortcut();
+    let _ = shortcuts.unregister_all();
+    if !preferred.is_empty() && shortcuts.register(preferred).is_ok() {
+        return ShortcutView::Registered(preferred.to_owned());
     }
     for (modifiers, label) in CANDIDATES {
         let shortcut = Shortcut::new(Some(modifiers), Code::Space);

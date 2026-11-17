@@ -70,4 +70,4 @@ Each capture allows up to 8 tool calls over 4 model turns, with a 20-second limi
 
 The card shows what Context is checking, for example *Checking calendar…*. The answer names the sources it used, on the card and in history. If the ChatGPT plan or model refuses tools, Context answers from the screen alone.
 
-Code: [`src/sources.rs`](../src/sources.rs) owns configuration, connections and the tool policy. [`src/chatgpt/responses.rs`](../src/chatgpt/responses.rs) runs the tool loop.
+Code: [`src/sources.rs`](../src/sources.rs) owns configuration, connections and the tool policy. [`src/model/openai.rs`](../src/model/openai.rs) and [`src/model/anthropic.rs`](../src/model/anthropic.rs) run the tool loop.

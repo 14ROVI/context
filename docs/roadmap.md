@@ -21,27 +21,27 @@ Work through these in order unless something more urgent comes up. Tick items of
 
 ### Ready for other people
 
-- [ ] **Release build.** Turn on Tauri bundling for MSI or NSIS, DMG, and AppImage or deb. Add code signing and an auto-updater, because unsigned builds are blocked by SmartScreen and Gatekeeper.
-- [ ] **Settings screen.** Change the capture shortcut and model, start at login, and manage sources without editing `mcp.json` by hand.
-- [ ] **Account edge cases.** Check behavior at the plan's usage limit, token refresh after the access token expires, and sign-out with token revocation.
-- [ ] **macOS and Linux.** Build and check on macOS, X11 and Wayland: the card staying out of focus, screen-recording permission on macOS, WebKitGTK and the tray on Linux, and `context capture` on Wayland.
+- [x] **Release build.** The manual **Release (Windows)** action builds the NSIS installer and can create a draft release. Not done: code signing, and an auto-updater, which needs public releases.
+- [x] **Settings screen.** Provider, model, shortcut, privacy, automatic cards and start at login.
+- [ ] **Account edge cases.** Token refresh is verified with a live account, and usage-limit errors link to the usage page. Still unverified: the real usage-limit response, and sign-out with token revocation.
+- [ ] **macOS and Linux.** Build and check on macOS, X11 and Wayland. Deferred: Windows only for now.
 
 ### Easy sources
 
 - [ ] **OAuth for remote MCP servers.** Show *Needs sign-in* with a **Sign in** button when a server answers 401. Use Client ID Metadata Documents (CIMD), falling back to dynamic client registration or a pre-registered client, and keep tokens in the credential store. GitHub's server needs a registered GitHub OAuth app.
 - [ ] **Source catalog.** A curated list plus search backed by the [MCP Registry](https://registry.modelcontextprotocol.io). Show a form for each server's settings, with secrets kept in the credential store. Consider `.mcpb` bundles for local servers.
 - [ ] **Built-in calendar connectors.** Google Calendar and Microsoft 365 with one-click, read-only sign-in, exposed to the model as tools. This needs a Google Cloud project and OAuth verification before a public release.
-- [ ] **Suggestions on the card.** When the screen asks something no source can answer, offer the connector, for example *Connect Google Calendar to check this*.
+- [x] **Suggestions on the card.** When an answer needed a source that isn't connected, the card offers **Connect calendar** and similar, which opens Settings.
 
 ### Product depth
 
-- [ ] **Follow-up questions** on a card or a saved result.
-- [ ] **Automatic cards.** Evaluate OCR, accessibility text and local image change detection as triggers. Count model and tool requests, suppress duplicates and limit background use. Keep the shortcut as a manual trigger. Set the defaults from a daily-use trial that measures how often cards arrive in time to help, how often they interrupt, and how much usage they consume.
-- [ ] **Privacy controls.** Apps that are never captured, an option not to save screenshots, and history that clears after a set number of days.
-- [ ] **More model providers**, such as an API key for Claude or OpenAI, alongside the ChatGPT plan.
+- [x] **Follow-up questions** on saved results, answered with the same screenshot and sources.
+- [x] **Automatic cards (experimental).** Off by default. Triggered by settling on a new window or conversation, without capturing. At most 6 checks an hour, no repeats within 30 minutes, and cards only when there is something to say. Tune from daily use: how often cards help, how often they interrupt, and how much usage they consume.
+- [x] **Privacy controls.** Excluded apps, an option not to keep screenshots, and history that clears after a set number of days.
+- [x] **More model providers.** OpenAI and Anthropic API keys alongside the ChatGPT plan. Not yet tested with live keys.
 
 ### Cleanup
 
-- [ ] Replace the demo calendar in the local `mcp.json`, which points at a temporary folder, with a real source or remove it.
-- [ ] Review the light theme in both windows.
-- [ ] Add a `.gitattributes` file so line endings stay consistent across platforms.
+- [x] Remove the demo calendar from the local `mcp.json`.
+- [x] Review the light theme in both windows.
+- [x] Add a `.gitattributes` file so line endings stay consistent across platforms.

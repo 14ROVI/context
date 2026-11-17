@@ -2,6 +2,7 @@
 // screenshot, connected sources and the account.
 
 import { button, dots, h, invoke, keys, listen, logo } from "./dom.js";
+import { renderSettings } from "./settings.js";
 
 /** How long a non-error notice stays before it fades. */
 const NOTICE_SECONDS = 8;
@@ -11,6 +12,12 @@ const main = document.getElementById("main");
 
 let state = null;
 let selected = null;
+/** "history" shows results; "settings" shows the Settings page. */
+let view = "history";
+/** A kind of source to look for when Settings opens, such as "calendar". */
+let sourceSearch = null;
+/** Follow-up questions being typed, by entry id. */
+const questions = new Map();
 let confirmClear = false;
 let copied = null;
 /** Screenshots already fetched, by entry id. */
@@ -32,7 +39,14 @@ function setState(next) {
 
 function select(id) {
   selected = id;
+  view = "history";
   confirmClear = false;
+  render();
+}
+
+function openSettings(search) {
+  view = "settings";
+  sourceSearch = search ?? null;
   render();
 }
 
@@ -112,7 +126,7 @@ function historyList() {
     list.append(
       h(
         "button",
-        { class: entry.id === selected ? "entry selected" : "entry", type: "button", onclick: () => select(entry.id) },
+        { class: entry.id === selected && view === "history" ? "entry selected" : "entry", type: "button", onclick: () => select(entry.id) },
         h("div", { class: "headline truncate" }, entry.text.headline),
         h("div", { class: "meta truncate" }, meta),
       ),
@@ -201,14 +215,42 @@ function accountPanel() {
     default:
       who = h("div", { class: "working" }, dots(), "Checking your account…");
   }
-  return h("div", { class: "account" }, who, button("Quit", "ghost small", () => invoke("quit")));
+  return h(
+    "div",
+    { class: "account" },
+    who,
+    button("Settings", view === "settings" ? "ghost small active" : "ghost small", () => openSettings(null)),
+    button("Quit", "ghost small", () => invoke("quit")),
+  );
 }
 
 // Main area
 
 function renderMain() {
+  if (view === "settings") {
+    const key = JSON.stringify([
+      "settings",
+      state.notice,
+      state.settings,
+      state.apiKeys,
+      state.models,
+      state.account,
+      state.shortcut,
+      state.sources,
+      sourceSearch,
+    ]);
+    if (key === shownKey) return;
+    shownKey = key;
+    // Keep the scroll position while settings change underneath.
+    const scroll = main.querySelector(".page")?.scrollTop ?? 0;
+    const page = h("div", { class: "page" }, renderSettings(state, sourcesSettings()));
+    main.replaceChildren(...[banner(), page].filter(Boolean));
+    page.scrollTop = scroll;
+    return;
+  }
   const entry = state.entries.find((item) => item.id === selected);
   const key = JSON.stringify([
+    state.asking,
     state.notice,
     state.historyProblem,
     entry ?? null,
@@ -267,9 +309,56 @@ function detail(entry) {
       }),
       button("Delete", "danger", () => invoke("delete_entry", { id: entry.id })),
     ),
+    followUps(entry),
     shot && [h("div", { class: "shot-label" }, "What Context saw"), h("img", { class: "shot", src: shot, alt: "The screen Context captured" })],
     h("div", { class: "provenance" }, provenance(entry.sources ?? [])),
   );
+}
+
+function followUps(entry) {
+  const thread = entry.follow_ups ?? [];
+  const asking = state.asking === entry.id;
+  const box = h("textarea", {
+    class: "field",
+    rows: "2",
+    placeholder: "Ask a follow-up about this result",
+    disabled: asking,
+    oninput: (event) => questions.set(entry.id, event.target.value),
+  });
+  box.value = questions.get(entry.id) ?? "";
+  const ask = () => {
+    const question = (questions.get(entry.id) ?? "").trim();
+    if (!question || asking) return;
+    questions.delete(entry.id);
+    invoke("ask_follow_up", { id: entry.id, question });
+  };
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      ask();
+    }
+  });
+  return h(
+    "div",
+    { class: "follow-ups" },
+    thread.map((item) =>
+      h(
+        "div",
+        { class: "follow-up" },
+        h("p", { class: "question" }, item.question),
+        h("p", { class: "answer" }, item.answer),
+        item.sources?.length > 0 && h("p", { class: "via-note" }, `Checked ${item.sources.join(", ")}`),
+      ),
+    ),
+    asking
+      ? h("div", { class: "asking" }, dots(), "Thinking about your question…")
+      : h("div", { class: "ask" }, box, button("Ask", "secondary", ask)),
+  );
+}
+
+/** Settings sections for sources. Filled in by the sources catalog. */
+function sourcesSettings() {
+  return [];
 }
 
 async function loadScreenshot(id) {
@@ -352,4 +441,5 @@ function provenance(sources) {
 
 listen("state", setState);
 listen("select-entry", select);
+listen("open-settings", openSettings);
 invoke("get_state").then(setState);

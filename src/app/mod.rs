@@ -1,12 +1,14 @@
 //! The Tauri app. A controller thread owns app state and reacts to events from
-//! the windows, tray, shortcut and worker. The worker thread runs the blocking
-//! work: capture, model requests, sign-in and connecting sources. The pages in
-//! `ui/` render the state the controller publishes.
+//! the windows, tray, shortcut, watcher and worker. The worker thread runs the
+//! blocking work. The pages in `ui/` render the state the controller publishes.
 
 mod card;
 mod commands;
 mod tray;
+mod watch;
+mod worker;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -14,15 +16,18 @@ use std::time::Duration;
 use async_channel::{Receiver, Sender};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_autostart::ManagerExt;
 use uuid::Uuid;
 
 use crate::Result;
-use crate::capture::{self, Focus};
-use crate::chatgpt::{Answer, ChatGpt, SignInRequired};
+use crate::capture::Focus;
 use crate::history::{ContextText, Entry, History};
-use crate::sources::{self, SourceStatus, Sources};
+use crate::model::{Answer, Assistant, Fix, NeedsAction};
+use crate::settings::{Provider, Settings};
+use crate::sources::{self, Sources};
 
 pub use card::CardView;
+use worker::{Job, Report};
 
 /// How long to wait after hiding Context before capturing what is behind it.
 const HIDE_DELAY: Duration = Duration::from_millis(300);
@@ -49,64 +54,75 @@ impl Launch {
 #[derive(Clone)]
 pub enum Command {
     Open(Option<Uuid>),
+    /// Opens Settings, optionally searching sources for a kind such as `calendar`.
+    OpenSettings(Option<String>),
     Capture,
     SignIn,
     SignOut,
     Delete(Uuid),
     ClearHistory,
+    FollowUp(Uuid, String),
+    SaveSettings(Settings),
+    SetApiKey(Provider, Option<String>),
+    ListModels(Provider),
     EditSources,
     ReloadSources,
     DismissNotice(u64),
-    CardClosed,
     Quit,
 }
 
-enum Event {
+pub enum Event {
     Command(Command),
     BeginCapture,
+    /// The watcher saw the user settle on a new window in this app.
+    AutoCheck(String),
     Shortcut(ShortcutView),
     Worker(Report),
 }
 
-/// Blocking work for the worker thread.
-enum Job {
-    CheckAccount,
-    Analyze,
-    SignIn,
-    SignOut,
-    ReloadSources,
-}
-
-/// What the worker reports back.
-enum Report {
-    Account(Option<String>),
-    Captured(Focus),
-    /// A short status for the card while the model works, such as "Checking calendar…".
-    Progress(String),
-    Analysis {
-        focus: Focus,
-        result: std::result::Result<Answer, Problem>,
-        /// The JPEG that was analyzed, kept with a saved result.
-        screenshot: Option<Vec<u8>>,
-    },
-    SignedIn(std::result::Result<String, Problem>),
-    SignedOut(String),
-    Sources(Vec<SourceStatus>, Option<String>),
-}
-
+/// A failure, with what the user can do about it.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Problem {
     pub message: String,
-    /// True when connecting ChatGPT again would fix it.
-    pub sign_in: bool,
+    pub fix: Option<FixView>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", content = "url", rename_all = "camelCase")]
+pub enum FixView {
+    SignIn,
+    Settings,
+    Usage(String),
+    Excluded,
+}
+
+impl Problem {
+    fn sign_in(&self) -> bool {
+        matches!(self.fix, Some(FixView::SignIn))
+    }
+
+    pub fn usage_url(&self) -> Option<String> {
+        match &self.fix {
+            Some(FixView::Usage(url)) => Some(url.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl From<Box<dyn std::error::Error + Send + Sync>> for Problem {
     fn from(error: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        let fix = error
+            .downcast_ref::<NeedsAction>()
+            .map(|needs| match needs.fix {
+                Fix::SignIn => FixView::SignIn,
+                Fix::Settings => FixView::Settings,
+                Fix::Usage(url) => FixView::Usage(url.into()),
+                Fix::Excluded => FixView::Excluded,
+            });
         Self {
-            sign_in: error.downcast_ref::<SignInRequired>().is_some(),
             message: error.to_string(),
+            fix,
         }
     }
 }
@@ -122,6 +138,12 @@ pub struct Snapshot {
     notice: Option<Notice>,
     history_problem: Option<String>,
     entries: Vec<Entry>,
+    settings: Settings,
+    /// Which providers have an API key saved. The keys themselves never leave Rust.
+    api_keys: ApiKeys,
+    models: ModelsView,
+    /// The entry whose follow-up question is being answered.
+    asking: Option<Uuid>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -170,6 +192,22 @@ struct Notice {
     error: bool,
 }
 
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiKeys {
+    open_ai: bool,
+    anthropic: bool,
+}
+
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelsView {
+    provider: Provider,
+    loading: bool,
+    list: Vec<String>,
+    error: Option<String>,
+}
+
 /// State the pages can read at any time through commands.
 pub struct Shared {
     events: Sender<Event>,
@@ -184,14 +222,24 @@ impl Shared {
 }
 
 pub fn run(first: Launch) -> Result<()> {
-    let history = History::load();
-    let chatgpt = ChatGpt::new()?;
+    let settings = Settings::load();
+    let mut history = History::load();
+    history.prune(settings.history_days);
+    let assistant = Assistant::new()?;
     let sources = Sources::new()?;
     let (events, receive_events) = async_channel::unbounded();
     let (jobs, receive_jobs) = async_channel::unbounded();
-    start_worker(chatgpt, sources, receive_jobs, events.clone())?;
+    worker::start(
+        assistant,
+        sources,
+        settings.clone(),
+        receive_jobs,
+        events.clone(),
+    )?;
     let _ = jobs.try_send(Job::CheckAccount);
     let _ = jobs.try_send(Job::ReloadSources);
+    let auto_cards = Arc::new(AtomicBool::new(settings.auto_cards));
+    watch::start(auto_cards.clone(), events.clone());
 
     let snapshot = Snapshot {
         account: Account::Checking,
@@ -205,6 +253,13 @@ pub fn run(first: Launch) -> Result<()> {
         notice: None,
         history_problem: history.problem.map(str::to_owned),
         entries: history.entries.clone(),
+        api_keys: api_keys(),
+        models: ModelsView {
+            provider: settings.provider,
+            ..Default::default()
+        },
+        settings: settings.clone(),
+        asking: None,
     };
     let shared = Arc::new(Shared {
         events: events.clone(),
@@ -225,13 +280,17 @@ pub fn run(first: Launch) -> Result<()> {
             let _ = relaunch.try_send(Event::Command(command));
         }))
         .plugin(tray::shortcut_plugin(shortcut_events))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(shared.clone())
         .invoke_handler(commands::handlers())
         .setup(move |app| {
             let handle = app.handle().clone();
             open_main_window(&handle)?;
             let menu = tray::install(&handle, events.clone())?;
-            let shortcut = tray::register_shortcut(&handle);
+            let shortcut = tray::register_shortcut(&handle, &settings.shortcut);
             let _ = events.try_send(Event::Shortcut(shortcut));
             if first == Launch::Capture {
                 let _ = events.try_send(Event::Command(Command::Capture));
@@ -241,6 +300,8 @@ pub fn run(first: Launch) -> Result<()> {
                 shared,
                 history,
                 menu,
+                settings,
+                auto_cards,
                 account: Account::Checking,
                 capturing: false,
                 card_opened: false,
@@ -260,8 +321,8 @@ pub fn run(first: Launch) -> Result<()> {
 fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
     let window = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
         .title("Context")
-        .inner_size(980., 640.)
-        .min_inner_size(720., 460.)
+        .inner_size(980., 680.)
+        .min_inner_size(720., 480.)
         .center()
         .build()?;
     // Closing the window hides it. Context keeps running in the tray.
@@ -275,66 +336,11 @@ fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn start_worker(
-    mut chatgpt: ChatGpt,
-    mut sources: Sources,
-    jobs: Receiver<Job>,
-    events: Sender<Event>,
-) -> Result<()> {
-    thread::Builder::new()
-        .name("context-worker".into())
-        .spawn(move || {
-            let send = |report| events.send_blocking(Event::Worker(report)).is_ok();
-            while let Ok(job) = jobs.recv_blocking() {
-                let delivered = match job {
-                    Job::CheckAccount => send(Report::Account(chatgpt.email().ok().flatten())),
-                    Job::SignIn => send(Report::SignedIn(chatgpt.sign_in().map_err(Problem::from))),
-                    Job::SignOut => send(Report::SignedOut(
-                        chatgpt.sign_out().unwrap_or_else(|error| error.to_string()),
-                    )),
-                    Job::Analyze => analyze(&mut chatgpt, &sources, &send),
-                    Job::ReloadSources => {
-                        sources.reload();
-                        let (servers, problem) = sources.status();
-                        send(Report::Sources(servers, problem))
-                    }
-                };
-                if !delivered {
-                    break;
-                }
-            }
-        })?;
-    Ok(())
-}
-
-fn analyze(chatgpt: &mut ChatGpt, sources: &Sources, send: &impl Fn(Report) -> bool) -> bool {
-    let failed = |focus, error: Box<dyn std::error::Error + Send + Sync>| Report::Analysis {
-        focus,
-        result: Err(error.into()),
-        screenshot: None,
-    };
-    if let Err(error) = chatgpt.ensure_connected() {
-        return send(failed(Focus::default(), error));
+fn api_keys() -> ApiKeys {
+    ApiKeys {
+        open_ai: Assistant::has_api_key(Provider::OpenAi),
+        anthropic: Assistant::has_api_key(Provider::Anthropic),
     }
-    let snapshot = match capture::take() {
-        Ok(snapshot) => snapshot,
-        Err(error) => return send(failed(Focus::default(), error)),
-    };
-    let focus = snapshot.focus.clone();
-    if !send(Report::Captured(focus.clone())) {
-        return false;
-    }
-    let progress = |status: String| {
-        send(Report::Progress(status));
-    };
-    let result = chatgpt
-        .analyze(&snapshot, sources, &progress)
-        .map_err(Problem::from);
-    send(Report::Analysis {
-        focus,
-        result,
-        screenshot: Some(snapshot.jpeg),
-    })
 }
 
 struct Controller {
@@ -342,6 +348,8 @@ struct Controller {
     shared: Arc<Shared>,
     history: History,
     menu: tray::Menu,
+    settings: Settings,
+    auto_cards: Arc<AtomicBool>,
     account: Account,
     capturing: bool,
     /// Whether the current capture has shown its card yet.
@@ -367,25 +375,59 @@ impl Controller {
                 self.app.exit(0);
                 return false;
             }
-            Event::Command(Command::Open(selection)) => self.open(selection),
-            Event::Command(Command::Capture) => self.request_capture(),
+            Event::Command(command) => self.command(command),
             Event::BeginCapture => self.begin_capture(),
-            Event::Command(Command::SignIn) => self.sign_in(),
-            Event::Command(Command::SignOut) => {
+            Event::AutoCheck(app) => self.auto_check(&app),
+            Event::Shortcut(shortcut) => {
+                self.menu.set_shortcut(&shortcut);
+                self.update(|snapshot| snapshot.shortcut = shortcut);
+            }
+            Event::Worker(report) => self.report(report),
+        }
+        true
+    }
+
+    fn command(&mut self, command: Command) {
+        match command {
+            Command::Quit => {}
+            Command::Open(selection) => self.open(selection),
+            Command::OpenSettings(search) => {
+                self.open(None);
+                let _ = self.app.emit_to(MAIN, "open-settings", search);
+            }
+            Command::Capture => self.request_capture(),
+            Command::SignIn => self.sign_in(),
+            Command::SignOut => {
                 if self.submit(Job::SignOut) {
                     self.account = Account::Checking;
                     self.publish();
                 }
             }
-            Event::Command(Command::Delete(id)) => {
+            Command::Delete(id) => {
                 self.history.remove(id);
                 self.publish();
             }
-            Event::Command(Command::ClearHistory) => {
+            Command::ClearHistory => {
                 self.history.clear();
                 self.publish();
             }
-            Event::Command(Command::EditSources) => {
+            Command::FollowUp(id, question) => self.follow_up(id, question),
+            Command::SaveSettings(settings) => self.save_settings(settings),
+            Command::SetApiKey(provider, key) => {
+                self.submit(Job::SetApiKey(provider, key));
+            }
+            Command::ListModels(provider) => {
+                if self.submit(Job::ListModels(provider)) {
+                    self.update(|snapshot| {
+                        snapshot.models = ModelsView {
+                            provider,
+                            loading: true,
+                            ..Default::default()
+                        };
+                    });
+                }
+            }
+            Command::EditSources => {
                 match sources::config_path().and_then(|path| Ok(open::that_detached(path)?)) {
                     Ok(()) => self.notify(
                         "Add servers to mcp.json, save it, then choose Reload.".into(),
@@ -394,12 +436,12 @@ impl Controller {
                     Err(error) => self.notify(format!("Could not open mcp.json. {error}"), true),
                 }
             }
-            Event::Command(Command::ReloadSources) => {
+            Command::ReloadSources => {
                 if self.submit(Job::ReloadSources) {
                     self.update(|snapshot| snapshot.sources.connecting = true);
                 }
             }
-            Event::Command(Command::DismissNotice(id)) => {
+            Command::DismissNotice(id) => {
                 self.update(|snapshot| {
                     if snapshot
                         .notice
@@ -410,14 +452,7 @@ impl Controller {
                     }
                 });
             }
-            Event::Command(Command::CardClosed) => {}
-            Event::Shortcut(shortcut) => {
-                self.menu.set_shortcut(&shortcut);
-                self.update(|snapshot| snapshot.shortcut = shortcut);
-            }
-            Event::Worker(report) => self.report(report),
         }
-        true
     }
 
     fn report(&mut self, report: Report) {
@@ -445,12 +480,27 @@ impl Controller {
             Report::Progress(status) => card::set_status(&self.app, &self.shared, status),
             Report::Analysis {
                 focus,
+                quiet,
                 result,
                 screenshot,
             } => {
-                self.capturing = false;
-                self.finish_analysis(focus, result, screenshot);
+                if !quiet {
+                    self.capturing = false;
+                }
+                self.finish_analysis(focus, quiet, result, screenshot);
                 self.publish();
+            }
+            Report::FollowUp { id, result } => {
+                match result {
+                    Ok(follow_up) => self.history.add_follow_up(id, follow_up),
+                    Err(problem) => {
+                        if problem.sign_in() {
+                            self.account = Account::SignedOut;
+                        }
+                        self.notify(problem.message, true);
+                    }
+                }
+                self.update(|snapshot| snapshot.asking = None);
             }
             Report::Sources(servers, problem) => self.update(|snapshot| {
                 snapshot.sources = SourcesView {
@@ -467,35 +517,77 @@ impl Controller {
                     problem,
                 };
             }),
+            Report::ApiKeySaved(provider, result) => {
+                match result {
+                    Ok(()) => {
+                        self.notify("API key saved.".into(), false);
+                        self.submit(Job::ListModels(provider));
+                    }
+                    Err(error) => self.notify(format!("Could not save the API key. {error}"), true),
+                }
+                self.update(|snapshot| snapshot.api_keys = api_keys());
+            }
+            Report::Models(provider, result) => self.update(|snapshot| {
+                let (list, error) = match result {
+                    Ok(list) => (list, None),
+                    Err(error) => (Vec::new(), Some(error)),
+                };
+                snapshot.models = ModelsView {
+                    provider,
+                    loading: false,
+                    list,
+                    error,
+                };
+            }),
         }
     }
 
     fn finish_analysis(
         &mut self,
         focus: Focus,
+        quiet: bool,
         result: std::result::Result<Answer, Problem>,
         screenshot: Option<Vec<u8>>,
     ) {
+        let screenshot = screenshot.filter(|_| self.settings.save_screenshots);
         let phase = match result {
             Ok(Answer {
                 text: Some(response),
                 sources,
+                needs,
             }) => match ContextText::from_response(&response) {
-                Some(text) => card::Phase::Ready {
-                    entry: self
+                Some(text) => {
+                    let entry = self
                         .history
-                        .push(text, focus.app.clone(), sources, screenshot),
-                },
-                None => card::Phase::Empty,
+                        .push(text, focus.app.clone(), sources, screenshot);
+                    self.history.prune(self.settings.history_days);
+                    card::Phase::Ready { entry, needs }
+                }
+                None => card::Phase::Empty { needs },
             },
-            Ok(Answer { text: None, .. }) => card::Phase::Empty,
+            Ok(Answer {
+                text: None, needs, ..
+            }) => card::Phase::Empty { needs },
             Err(problem) => {
-                if problem.sign_in {
+                if problem.sign_in() {
                     self.account = Account::SignedOut;
                 }
                 card::Phase::Problem { problem }
             }
         };
+        if quiet {
+            // Automatic checks only speak up when they found something.
+            match phase {
+                card::Phase::Ready { .. } if !card::is_open(&self.shared) => {
+                    card::show(&self.app, &self.shared, phase, &focus);
+                }
+                card::Phase::Problem { problem } => {
+                    crate::debug(format_args!("automatic check failed: {}", problem.message));
+                }
+                _ => {}
+            }
+            return;
+        }
         // Update the card the user is watching, or show one if the capture
         // failed before a card opened. A card the user dismissed stays closed:
         // results still land in history and problems in the main window.
@@ -522,10 +614,10 @@ impl Controller {
         if self.capturing {
             return;
         }
-        if self.account == Account::SignedOut {
+        if self.settings.provider == Provider::ChatGpt && self.account == Account::SignedOut {
             let problem = Problem {
                 message: "Connect ChatGPT so Context can look at your screen.".into(),
-                sign_in: true,
+                fix: Some(FixView::SignIn),
             };
             card::show(
                 &self.app,
@@ -559,9 +651,87 @@ impl Controller {
     fn begin_capture(&mut self) {
         card::close(&self.app, &self.shared);
         self.card_opened = false;
-        if self.submit(Job::Analyze) {
+        if self.submit(Job::Analyze { quiet: false }) {
             self.capturing = true;
             self.publish();
+        }
+    }
+
+    /// Runs a quiet check when automatic cards are on and nothing else is going on.
+    fn auto_check(&mut self, app: &str) {
+        let ready = match self.settings.provider {
+            Provider::ChatGpt => matches!(self.account, Account::SignedIn(_)),
+            _ => true,
+        };
+        if !self.settings.auto_cards
+            || !ready
+            || self.capturing
+            || card::is_open(&self.shared)
+            || self.settings.excludes(app)
+        {
+            return;
+        }
+        self.submit(Job::Analyze { quiet: true });
+    }
+
+    fn follow_up(&mut self, id: Uuid, question: String) {
+        let question = question.trim().to_owned();
+        let Some(entry) = self.history.get(id).cloned() else {
+            return;
+        };
+        if question.is_empty() {
+            return;
+        }
+        if self.submit(Job::FollowUp { entry, question }) {
+            self.update(|snapshot| snapshot.asking = Some(id));
+        }
+    }
+
+    fn save_settings(&mut self, mut next: Settings) {
+        next.shortcut = next.shortcut.trim().to_owned();
+        if next.shortcut != self.settings.shortcut {
+            let shortcut = tray::register_shortcut(&self.app, &next.shortcut);
+            match &shortcut {
+                ShortcutView::Registered(keys) if *keys != next.shortcut => {
+                    self.notify(
+                        format!(
+                            "{} is taken or not valid, so Context uses {keys}.",
+                            next.shortcut
+                        ),
+                        true,
+                    );
+                    next.shortcut = keys.clone();
+                }
+                _ => {}
+            }
+            self.menu.set_shortcut(&shortcut);
+            self.update(|snapshot| snapshot.shortcut = shortcut);
+        }
+        if next.start_at_login != self.settings.start_at_login {
+            let autostart = self.app.autolaunch();
+            let result = if next.start_at_login {
+                autostart.enable()
+            } else {
+                autostart.disable()
+            };
+            if let Err(error) = result {
+                self.notify(format!("Could not change start at login. {error}"), true);
+                next.start_at_login = self.settings.start_at_login;
+            }
+        }
+        self.auto_cards.store(next.auto_cards, Ordering::Relaxed);
+        if next.history_days != self.settings.history_days {
+            self.history.prune(next.history_days);
+        }
+        let provider_changed = next.provider != self.settings.provider;
+        if let Err(error) = next.save() {
+            self.notify(format!("Could not save settings. {error}"), true);
+        }
+        self.submit(Job::Configure(next.clone()));
+        self.settings = next.clone();
+        self.update(|snapshot| snapshot.settings = next);
+        if provider_changed {
+            self.command(Command::ListModels(self.settings.provider));
         }
     }
 

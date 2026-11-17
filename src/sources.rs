@@ -9,7 +9,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use directories::ProjectDirs;
 use rmcp::RoleClient;
 use rmcp::model::{
     CallToolRequestParams, ClientCapabilities, ClientConfig, Implementation, ProtocolVersion, Tool,
@@ -311,11 +310,7 @@ impl Server {
 
 /// Where `mcp.json` lives. Creates an empty one on first use so it can be edited.
 pub fn config_path() -> Result<PathBuf> {
-    let dirs = ProjectDirs::from("", "", "Context")
-        .ok_or("Context could not find a folder for its settings.")?;
-    let directory = dirs.config_dir();
-    std::fs::create_dir_all(directory)?;
-    let path = directory.join(CONFIG_FILE);
+    let path = crate::storage::config_dir()?.join(CONFIG_FILE);
     if !path.exists() {
         std::fs::write(&path, "{\n  \"mcpServers\": {}\n}\n")?;
     }

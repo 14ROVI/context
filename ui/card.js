@@ -26,7 +26,9 @@ setInterval(() => {
 function show(next) {
   if (!next) return;
   if (!view || next.generation !== view.generation) {
-    closesAt = Date.now() + LIFETIME[next.phase] * 1000;
+    // A card that suggests a source stays long enough to act on.
+    const seconds = next.phase === "empty" && next.needs ? LIFETIME.problem : LIFETIME[next.phase];
+    closesAt = Date.now() + seconds * 1000;
     copied = false;
   }
   view = next;
@@ -72,18 +74,20 @@ function body() {
       return h(
         "div",
         { class: "body" },
-        h("p", { class: "title" }, "Nothing to add here"),
-        h("p", { class: "text" }, "Context didn't find anything useful on this screen."),
+        h("p", { class: "title" }, view.needs ? `Context can't check your ${view.needs} yet` : "Nothing to add here"),
+        h(
+          "p",
+          { class: "text" },
+          view.needs
+            ? `Connect a ${view.needs} source and Context can answer questions like this one.`
+            : "Context didn't find anything useful on this screen.",
+        ),
       );
     case "problem":
       return h(
         "div",
         { class: "body" },
-        h(
-          "p",
-          { class: view.problem.signIn ? "title" : "title error" },
-          view.problem.signIn ? "Connect ChatGPT to continue" : "Context couldn't help with this one",
-        ),
+        h("p", { class: view.problem.fix ? "title" : "title error" }, problemTitle(view.problem)),
         h("p", { class: "text" }, view.problem.message),
       );
   }
@@ -102,20 +106,51 @@ function actions() {
         copied = true;
         render();
       }),
-      sources.length > 0 &&
-        h("span", { class: "via" }, h("span", { class: "chip", title: sources.join(", ") }, viaLabel(sources))),
+      h(
+        "span",
+        { class: "via" },
+        sources.length > 0
+          ? h("span", { class: "chip", title: sources.join(", ") }, viaLabel(sources))
+          : view.needs && connectButton(view.needs),
+      ),
     );
   }
+  if (view.phase === "empty" && view.needs) {
+    return h("div", { class: "actions" }, button(`Connect ${view.needs}`, "primary", () => invoke("open_settings", { search: view.needs })));
+  }
   if (view.phase === "problem") {
+    const fix = view.problem.fix?.kind;
     return h(
       "div",
       { class: "actions" },
-      view.problem.signIn
-        ? button("Connect ChatGPT", "primary", () => invoke("sign_in"))
-        : button("Open Context", "secondary", () => invoke("open_main")),
+      fix === "signIn" && button("Connect ChatGPT", "primary", () => invoke("sign_in")),
+      (fix === "settings" || fix === "excluded") &&
+        button("Open settings", fix === "settings" ? "primary" : "secondary", () => invoke("open_settings", { search: null })),
+      fix === "usage" && button("Check usage", "primary", () => invoke("open_usage")),
+      !fix && button("Open Context", "secondary", () => invoke("open_main")),
     );
   }
   return "";
+}
+
+/** A small link suggesting a source that would have helped. */
+function connectButton(kind) {
+  return button(`Connect ${kind}`, "ghost small", () => invoke("open_settings", { search: kind }));
+}
+
+function problemTitle(problem) {
+  switch (problem.fix?.kind) {
+    case "signIn":
+      return "Connect ChatGPT to continue";
+    case "settings":
+      return "Finish setting up Context";
+    case "usage":
+      return "Usage limit reached";
+    case "excluded":
+      return "This app is excluded";
+    default:
+      return "Context couldn't help with this one";
+  }
 }
 
 function viaLabel(sources) {

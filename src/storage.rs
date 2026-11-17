@@ -34,6 +34,8 @@ pub enum Record {
     History,
     /// The JPEG captured for one history entry.
     Screenshot(Uuid),
+    OpenAiKey,
+    AnthropicKey,
 }
 
 impl Record {
@@ -44,13 +46,15 @@ impl Record {
             Record::Account => "account.ctx".into(),
             Record::History => "history.ctx".into(),
             Record::Screenshot(id) => format!("{SCREENSHOTS}/{}.ctx", id.simple()),
+            Record::OpenAiKey => "openai-key.ctx".into(),
+            Record::AnthropicKey => "anthropic-key.ctx".into(),
         }
     }
 
     fn max_bytes(self) -> u64 {
         match self {
             Record::Screenshot(_) => 8 * 1024 * 1024,
-            Record::Account | Record::History => 512 * 1024,
+            _ => 512 * 1024,
         }
     }
 }
@@ -60,6 +64,15 @@ pub fn data_dir() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("", "", "Context")
         .ok_or("Context could not find a folder for its data.")?;
     let path = dirs.data_local_dir().to_owned();
+    fs::create_dir_all(&path)?;
+    Ok(path)
+}
+
+/// The per-user folder for settings people may edit, such as `mcp.json`.
+pub fn config_dir() -> Result<PathBuf> {
+    let dirs = ProjectDirs::from("", "", "Context")
+        .ok_or("Context could not find a folder for its settings.")?;
+    let path = dirs.config_dir().to_owned();
     fs::create_dir_all(&path)?;
     Ok(path)
 }

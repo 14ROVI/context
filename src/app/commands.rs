@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::{CardView, Command, Shared, Snapshot, card};
 use crate::history;
+use crate::settings::{Provider, Settings};
 
 type SharedState = Arc<Shared>;
 
@@ -32,6 +33,12 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         copy_text,
         card_resize,
         card_close,
+        open_settings,
+        open_usage,
+        ask_follow_up,
+        save_settings,
+        set_api_key,
+        list_models,
         quit,
     ]
 }
@@ -127,10 +134,45 @@ fn card_resize(app: AppHandle, shared: State<'_, SharedState>, height: f64) -> R
 #[tauri::command]
 fn card_close(app: AppHandle, shared: State<'_, SharedState>) {
     card::close(&app, &shared);
-    shared.send(Command::CardClosed);
 }
 
 #[tauri::command]
 fn quit(shared: State<'_, SharedState>) {
     shared.send(Command::Quit);
+}
+
+/// Opens Settings in the main window, optionally searching sources for `search`.
+#[tauri::command]
+fn open_settings(shared: State<'_, SharedState>, search: Option<String>) {
+    shared.send(Command::OpenSettings(search));
+}
+
+/// Opens the usage page for the problem the card shows. The page cannot
+/// choose the address; it comes from the problem the app created.
+#[tauri::command]
+fn open_usage(shared: State<'_, SharedState>) -> Result<(), String> {
+    let url = card::usage_url(&shared).ok_or("There is no usage page to open.")?;
+    open::that_detached(url).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn ask_follow_up(shared: State<'_, SharedState>, id: Uuid, question: String) {
+    shared.send(Command::FollowUp(id, question));
+}
+
+#[tauri::command]
+fn save_settings(shared: State<'_, SharedState>, settings: Settings) {
+    shared.send(Command::SaveSettings(settings));
+}
+
+/// Saves an API key, or removes it when `key` is empty. The key goes straight
+/// to encrypted storage and is never sent back to a page.
+#[tauri::command]
+fn set_api_key(shared: State<'_, SharedState>, provider: Provider, key: Option<String>) {
+    shared.send(Command::SetApiKey(provider, key));
+}
+
+#[tauri::command]
+fn list_models(shared: State<'_, SharedState>, provider: Provider) {
+    shared.send(Command::ListModels(provider));
 }

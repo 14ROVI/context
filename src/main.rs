@@ -3,8 +3,9 @@
 
 mod app;
 mod capture;
-mod chatgpt;
 mod history;
+mod model;
+mod settings;
 mod sources;
 mod storage;
 
