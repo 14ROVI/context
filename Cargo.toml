@@ -1,0 +1,48 @@
+[package]
+name = "context"
+version = "0.2.0"
+edition = "2024"
+description = "A desktop assistant that brings relevant information into view."
+
+# Every dependency below is cross-platform. Crates such as `keyring`, `tray-icon`,
+# `global-hotkey` and `xcap` choose their own Windows, macOS or Linux backend, so
+# Context itself does not branch on the target OS.
+[dependencies]
+async-channel = "2"
+base64 = "0.22"
+chrono = "0.4"
+ctrlc = "3.5"
+directories = "6"
+global-hotkey = "0.10"
+gpui = "0.2.2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+open = "5"
+openidconnect = { version = "4.1", default-features = false }
+raw-window-handle = "0.6"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+ring = "0.17"
+rmcp = { version = "3.10", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tiny_http = "0.12"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "process"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
+url = "2"
+uuid = { version = "1", features = ["serde", "v4"] }
+which = "8"
+xcap = "0.9.10"
+
+# GPUI 0.2 activates pop-up windows when it shows them on Windows. This is the
+# only OS-specific dependency; it backs `src/desktop/native.rs`.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
