@@ -239,7 +239,6 @@ function accountPanel() {
     { class: "account" },
     who,
     button("Settings", view === "settings" ? "ghost small active" : "ghost small", () => openSettings(null)),
-    button("Quit", "ghost small", () => invoke("quit")),
   );
 }
 

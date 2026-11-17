@@ -49,7 +49,7 @@ Each run uploads `Context_<version>_x64-setup.exe` as an artifact. With `publish
 
 The **Capture screen** button hides Context and captures the app behind it. On Wayland, add a desktop shortcut that runs `context capture`. Running `context` again brings the open window forward.
 
-Closing the window hides it, and Context keeps running in the tray. Click the tray icon to bring it back. Quit from the window or tray. When a plan or API usage limit is reached, the card links to the usage page.
+Closing the window hides it, and Context keeps running in the tray. Click the tray icon to bring it back. Quit from the tray. When a plan or API usage limit is reached, the card links to the usage page.
 
 History keeps results forever by default, in your local app-data folder. In Settings you can keep them for 1, 7, 30 or 90 days instead. Records are encrypted with a key stored in your system credential store. Results show the app that was in focus when the desktop reports it. Each result keeps the screenshot it came from, encrypted in a `screenshots` subfolder. You can copy or delete a result, or clear all history. Deleting a result deletes its screenshot.
 
