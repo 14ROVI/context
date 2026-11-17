@@ -131,19 +131,6 @@ body {
   font-weight: 500;
 }
 
-.account .link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--subtle);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.account .link:hover {
-  color: var(--text);
-}
-
 .account .working {
   display: flex;
   flex: 1;

@@ -93,7 +93,12 @@ function modelSection(state) {
   if (provider === "chatGpt") {
     credentials =
       account.state === "signedIn"
-        ? h("p", { class: "status" }, `Connected as ${account.email}.`)
+        ? h(
+            "div",
+            { class: "row" },
+            h("p", { class: "status", style: { flex: "1" } }, `Connected as ${account.email}.`),
+            button("Sign out", "secondary", () => invoke("sign_out")),
+          )
         : h("div", { class: "row" }, button("Connect ChatGPT", "primary", () => invoke("sign_in")));
   } else {
     const saved = provider === "openAi" ? apiKeys.openAi : apiKeys.anthropic;

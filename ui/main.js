@@ -157,7 +157,6 @@ function accountPanel() {
           "div",
           { style: { "min-width": "0" } },
           h("div", { class: "email truncate" }, account.email),
-          h("button", { class: "link", type: "button", onclick: () => invoke("sign_out") }, "Sign out"),
         ),
       );
       break;
