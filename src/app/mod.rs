@@ -172,6 +172,7 @@ struct CatalogView {
     error: Option<String>,
     /// A source action, such as a sign-in, is running.
     busy: bool,
+    sign_in_prompt: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -616,12 +617,18 @@ impl Controller {
                     problem,
                 };
             }),
+            Report::SourcePrompt(message) => self.update(|snapshot| {
+                snapshot.catalog.sign_in_prompt = Some(message);
+            }),
             Report::SourceDone(result) => {
                 match result {
                     Ok(message) => self.notify(message, false),
                     Err(message) => self.notify(message, true),
                 }
-                self.update(|snapshot| snapshot.catalog.busy = false);
+                self.update(|snapshot| {
+                    snapshot.catalog.busy = false;
+                    snapshot.catalog.sign_in_prompt = None;
+                });
             }
             Report::ConnectorAdded(id) => {
                 if !self.settings.connectors.contains(&id) {

@@ -57,7 +57,6 @@ jobs:
           CONTEXT_GOOGLE_CLIENT_ID: ${{ secrets.CONTEXT_GOOGLE_CLIENT_ID }}
           CONTEXT_GOOGLE_CLIENT_SECRET: ${{ secrets.CONTEXT_GOOGLE_CLIENT_SECRET }}
           CONTEXT_GITHUB_CLIENT_ID: ${{ secrets.CONTEXT_GITHUB_CLIENT_ID }}
-          CONTEXT_GITHUB_CLIENT_SECRET: ${{ secrets.CONTEXT_GITHUB_CLIENT_SECRET }}
 
       - name: Upload installer
         uses: actions/upload-artifact@v4

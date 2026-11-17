@@ -27,6 +27,7 @@ export function renderSources(state, preset) {
     h("h2", {}, "Sources"),
     h("p", { class: "lead" }, "Sources let answers check more than the screen, such as your calendar or your team's issues. Context offers the model only read-only tools unless you allow others in mcp.json."),
     connected(sources, catalog.busy),
+    catalog.signInPrompt && h("p", { class: "note", role: "status" }, catalog.signInPrompt),
     h("div", { class: "label" }, "Add a source"),
     h("div", { class: "catalog" }, catalog.featured.map((entry) => card(entry, sources, catalog.busy, preset))),
     searchBox(catalog),

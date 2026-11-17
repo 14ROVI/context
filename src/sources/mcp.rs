@@ -95,11 +95,7 @@ pub fn builtin_client(issuer: &str) -> Option<(ClientId, &'static str)> {
         .map(str::to_owned)
         .or_else(|| std::env::var("CONTEXT_GITHUB_CLIENT_ID").ok())
         .filter(|value| !value.is_empty())?;
-    let secret = option_env!("CONTEXT_GITHUB_CLIENT_SECRET")
-        .map(str::to_owned)
-        .or_else(|| std::env::var("CONTEXT_GITHUB_CLIENT_SECRET").ok())
-        .filter(|value| !value.is_empty());
-    Some((ClientId { id, secret }, "repo read:org"))
+    Some((ClientId { id, secret: None }, "repo read:org"))
 }
 
 pub fn allowed(tool: &Tool, listed: Option<&[String]>) -> bool {

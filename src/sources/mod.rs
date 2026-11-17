@@ -280,7 +280,7 @@ impl Sources {
     }
 
     /// Signs in to the named source in the browser. Blocks until done.
-    pub fn sign_in(&mut self, name: &str) -> Result<()> {
+    pub fn sign_in(&mut self, name: &str, prompt: &impl Fn(String)) -> Result<()> {
         let server = self
             .servers
             .iter()
@@ -309,6 +309,12 @@ impl Sources {
             // Otherwise ask for what the server's 401 asked for.
             (None, None) => (None, challenge.scope.clone()),
         };
+        if endpoints.issuer.trim_end_matches('/') == "https://github.com/login/oauth" {
+            let client = client
+                .ok_or("This build has no GitHub client ID. Add one under oauth in mcp.json.")?;
+            let grant = oauth::github_sign_in(&self.http, &client, scopes.as_deref(), prompt)?;
+            return oauth::save(url, &grant);
+        }
         crate::debug(format_args!(
             "signing in to {name} at {} ({})",
             endpoints.issuer,

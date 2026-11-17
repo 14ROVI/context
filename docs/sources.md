@@ -74,20 +74,26 @@ Remote servers that answer `401` show *Needs sign-in*. Signing in follows the MC
 
 Sign-ins are stored encrypted, one per server address, and refreshed before they expire. Client ID Metadata Documents (CIMD) are not used yet, because they need a page Context hosts on the web.
 
+GitHub uses its [device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) instead of a callback. Context opens GitHub in your browser and keeps a one-time code visible in Settings until sign-in finishes. Enter that code and approve Context. It polls at GitHub's requested interval, slows down when asked, and reports declined or expired sign-ins.
+
 ## Google Calendar
 
 The built-in connector asks Google for read access to events only (`calendar.events.readonly`). It offers the model one tool, `list_events`, for up to 31 days at a time on the primary calendar, in local time. Events marked free and invitations you declined are labelled.
 
 ## Context's OAuth apps
 
-Google and GitHub do not let apps register themselves, so Context ships its own OAuth apps. Their client IDs and secrets are compiled in from environment variables, and are never committed. A desktop app's client secret is not confidential, but both providers require one.
+Google and GitHub do not let apps register themselves, so Context ships its own OAuth apps. Their credentials are compiled in from environment variables, and are never committed. GitHub's device flow needs only its public client ID. Google's desktop client also requires a client secret, which cannot be confidential in a desktop app.
 
 | Variable | App |
 | --- | --- |
 | `CONTEXT_GOOGLE_CLIENT_ID`, `CONTEXT_GOOGLE_CLIENT_SECRET` | A Google Cloud OAuth client of type **Desktop app**, in a project with the Google Calendar API enabled. The consent screen must list the `calendar.events.readonly` scope. While the app is in testing, only listed test users can sign in. A public release needs Google's verification. |
-| `CONTEXT_GITHUB_CLIENT_ID`, `CONTEXT_GITHUB_CLIENT_SECRET` | A GitHub OAuth app with the callback URL `http://127.0.0.1/callback`. GitHub accepts any port on a loopback callback. Context asks for `repo read:org`; the read-only MCP endpoint limits what the model can do. |
+| `CONTEXT_GITHUB_CLIENT_ID` | A GitHub OAuth app with **Enable Device Flow** checked. No client secret is needed. Keep **Token expiration** disabled under Optional features. Context asks for `repo read:org`; these OAuth scopes include write access, while Context's read-only MCP endpoint and tool policy restrict model calls. |
 
 The release workflow reads these as repository secrets. For a local build, set them in the shell before `cargo build`, or before launching Context. Without them, Google Calendar shows as unavailable and GitHub asks for a personal access token instead.
+
+For Google, use a separate Cloud project, enable the Google Calendar API, configure the consent screen and add your account as a test user, then create a **Desktop app** client. Add its ID and secret as the two repository secrets above. Google [supports loopback callbacks and PKCE for desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app). While an external app is in Testing, Calendar [refresh tokens expire after seven days](https://developers.google.com/identity/protocols/oauth2#expiration); sign in again when that happens.
+
+The registered apps are **Context** on GitHub and **Context desktop** in Google Cloud project `context-515016`. The Google app remains in Testing, with the maintainer's account listed as a test user. The three repository secrets above are configured for release builds.
 
 ### GitHub without OAuth
 
@@ -117,7 +123,7 @@ The card shows what Context is checking, for example *Checking Google Calendarâ€
 | --- | --- |
 | [`src/sources/mod.rs`](../src/sources/mod.rs) | The list of sources, the tool policy, calls, sign-in and sign-out. |
 | [`src/sources/mcp.rs`](../src/sources/mcp.rs) | `mcp.json`, MCP connections, 401 detection and `${â€¦}` values. |
-| [`src/sources/oauth.rs`](../src/sources/oauth.rs) | Discovery, client registration, browser sign-in, refresh and stored grants. |
+| [`src/sources/oauth.rs`](../src/sources/oauth.rs) | Discovery, client registration, PKCE, GitHub device flow, refresh and stored grants. |
 | [`src/sources/google.rs`](../src/sources/google.rs) | The Google Calendar connector. |
 | [`src/sources/catalog.rs`](../src/sources/catalog.rs) | Featured sources, MCP Registry search, and adding or removing servers. |
 | [`ui/sources.js`](../ui/sources.js) | The Sources section of Settings. |

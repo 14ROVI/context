@@ -30,7 +30,7 @@ pub struct Endpoints {
 }
 
 /// An OAuth client. Desktop clients cannot keep a secret, so a secret here is
-/// one the provider requires anyway, as Google and GitHub do.
+/// one the provider requires anyway, as Google does.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClientId {
     pub id: String,
@@ -212,6 +212,96 @@ pub fn sign_in(http: &Client, request: SignIn) -> Result<Grant> {
     Err("Sign-in timed out. Try again from Context.".into())
 }
 
+/// GitHub's device flow needs only a public client ID, never a client secret.
+/// Keep the user code visible in Context while the browser asks for it.
+pub fn github_sign_in(
+    http: &Client,
+    client: &ClientId,
+    scopes: Option<&str>,
+    prompt: &impl Fn(String),
+) -> Result<Grant> {
+    #[derive(Deserialize)]
+    struct Device {
+        device_code: String,
+        user_code: String,
+        verification_uri: String,
+        expires_in: u64,
+        #[serde(default = "default_interval")]
+        interval: u64,
+    }
+    fn default_interval() -> u64 {
+        5
+    }
+    let device: Device = http
+        .post("https://github.com/login/device/code")
+        .header("Accept", "application/json")
+        .form(&[
+            ("client_id", client.id.as_str()),
+            ("scope", scopes.unwrap_or_default()),
+        ])
+        .send()?
+        .error_for_status()?
+        .json()
+        .map_err(|_| "GitHub could not start sign-in. Check that the app enables Device Flow.")?;
+    // Open only GitHub's known verification page, even if a response is malformed.
+    if device.verification_uri != "https://github.com/login/device" {
+        return Err("GitHub returned an unexpected sign-in address.".into());
+    }
+    prompt(format!(
+        "Enter {} at github.com/login/device to connect GitHub.",
+        device.user_code
+    ));
+    open::that_detached(&device.verification_uri)
+        .map_err(|_| "Context could not open GitHub sign-in in your browser.")?;
+    let deadline = Instant::now() + Duration::from_secs(device.expires_in.min(900));
+    let mut interval = Duration::from_secs(device.interval.clamp(5, 900));
+    let token_endpoint = "https://github.com/login/oauth/access_token";
+    // Device grants never use the secret from an optional custom client.
+    let client = ClientId {
+        id: client.id.clone(),
+        secret: None,
+    };
+    loop {
+        if deadline.saturating_duration_since(Instant::now()) <= interval {
+            return Err("GitHub sign-in timed out. Try again from Context.".into());
+        }
+        std::thread::sleep(interval);
+        let response = http
+            .post(token_endpoint)
+            .header("Accept", "application/json")
+            .form(&[
+                ("client_id", client.id.as_str()),
+                ("device_code", device.device_code.as_str()),
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+            ])
+            .send();
+        let response = match response {
+            Err(error) if error.is_timeout() => {
+                interval = interval.saturating_mul(2);
+                continue;
+            }
+            response => response?,
+        };
+        let status = response.status();
+        let body: Value = response.json()?;
+        match body["error"].as_str() {
+            Some("authorization_pending") if status.is_success() => continue,
+            Some("slow_down") if status.is_success() => {
+                interval += Duration::from_secs(5);
+                continue;
+            }
+            Some("access_denied") => return Err("GitHub sign-in was declined.".into()),
+            Some("expired_token") => {
+                return Err("GitHub sign-in expired. Try again from Context.".into());
+            }
+            Some(_) => return Err("GitHub did not accept the sign-in. Try again.".into()),
+            None if status.is_success() => {}
+            None => return Err("GitHub could not finish signing in. Try again.".into()),
+        }
+        return grant(&body, token_endpoint, &client, None);
+    }
+}
+
 /// Registers Context as a client with the authorization server (RFC 7591).
 fn register(http: &Client, endpoints: &Endpoints, redirect: &str) -> Result<ClientId> {
     let endpoint = endpoints.registration.as_deref().ok_or(
@@ -273,6 +363,15 @@ fn exchange(
         ));
         return Err("The source did not accept the sign-in. Try signing in again.".into());
     }
+    grant(&body, token_endpoint, client, resource)
+}
+
+fn grant(
+    body: &Value,
+    token_endpoint: &str,
+    client: &ClientId,
+    resource: Option<&str>,
+) -> Result<Grant> {
     let access_token = body["access_token"]
         .as_str()
         .ok_or("The source did not return an access token.")?

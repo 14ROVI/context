@@ -69,6 +69,8 @@ pub enum Report {
     Sources(Vec<SourceStatus>, Option<String>),
     /// A source action finished; the message is shown to the user.
     SourceDone(std::result::Result<String, String>),
+    /// A device sign-in code to keep visible until the source action finishes.
+    SourcePrompt(String),
     /// A built-in connector was added and should be saved in settings.
     ConnectorAdded(String),
     Catalog(String, std::result::Result<Vec<CatalogEntry>, String>),
@@ -135,7 +137,9 @@ pub fn start(
                     }
                     Job::SourceSignIn(name) => {
                         let result = sources
-                            .sign_in(&name)
+                            .sign_in(&name, &|message| {
+                                send(Report::SourcePrompt(message));
+                            })
                             .map(|()| format!("{name} is connected."))
                             .map_err(|error| error.to_string());
                         sources.reload(&settings.connectors);
@@ -155,7 +159,9 @@ pub fn start(
                             sources.reload(&settings.connectors);
                             let result = if entry.sign_in {
                                 sources
-                                    .sign_in(&name)
+                                    .sign_in(&name, &|message| {
+                                        send(Report::SourcePrompt(message));
+                                    })
                                     .map(|()| format!("{} is connected.", entry.name))
                                     .map_err(|error| error.to_string())
                             } else {

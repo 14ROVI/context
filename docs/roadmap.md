@@ -11,7 +11,9 @@
 - `context capture` for desktops where apps cannot register global shortcuts.
 - [Sources](sources.md): MCP servers over stdio or HTTP that the model can query, limited to read-only tools unless the user lists others. Cards and history name the sources used.
 
-Verified on Windows 11 on 17 November 2026 with a live ChatGPT plan. Sign-in, model listing (`gpt-6-luna` chosen), a vision request and a calendar tool call all worked end to end against a demo MCP server. GitHub's hosted MCP server also worked over streamable HTTP, with a token from an environment variable, 28 read-only tools and two chained `issue_read` calls. The plan accepted function tools with `store: false`, and the model returned no reasoning items between rounds. macOS and Linux builds have not been checked.
+Verified on Windows 11 on 17 November 2026 with a live ChatGPT plan. Sign-in, model listing (`gpt-6-luna` chosen), a vision request and a calendar tool call all worked end to end against a demo MCP server. GitHub's hosted MCP server also worked over streamable HTTP, with a token from an environment variable, 28 read-only tools and two chained `issue_read` calls. Context's own GitHub OAuth app has since been checked live using device flow: GitHub accepted authorization and Context loaded 28 read-only tools. The plan accepted function tools with `store: false`, and the model returned no reasoning items between rounds. macOS and Linux builds have not been checked.
+
+On the same date, Google's desktop OAuth sign-in and a real Calendar event-list request succeeded. One follow-up checked both Google Calendar and GitHub, returning the event count and the repository's current commit. Both encrypted source grants survived an app restart, with Google Calendar's one tool and GitHub's 28 tools available. Google refresh and non-empty event results have not been checked live.
 
 The Tauri UI replaced a GPUI one on 17 November 2026. GPUI needed Win32 calls to keep the card from taking focus, could not size windows to their content, and drew large images incompletely on Windows. On Windows 11 the Tauri card kept the user's app focused through a live capture, sized itself to each phase, and opened the main window on its result. The main window shows saved screenshots in full.
 
@@ -30,8 +32,8 @@ Work through these in order unless something more urgent comes up. Tick items of
 
 - [x] **OAuth for remote MCP servers.** *Needs sign-in* and **Sign in** per source, with discovery, dynamic client registration, PKCE, refresh and encrypted grants. Verified against Notion up to the consent page. Not done: Client ID Metadata Documents, which need a hosted page.
 - [x] **Source catalog.** Featured sources, MCP Registry search, and an add form whose secrets are stored encrypted as `${secret:…}`. Not done: `.mcpb` bundles and Docker packages.
-- [ ] **Context's OAuth apps.** Create the Google Cloud OAuth client and the GitHub OAuth app, then add their IDs as repository secrets. Until then Google Calendar is unavailable and GitHub asks for a token. See [Sources](sources.md#contexts-oauth-apps).
-- [ ] **Built-in calendar connectors.** Google Calendar is built and waits on its OAuth client to be tested. Microsoft 365 is not started. A public Google release needs OAuth verification.
+- [x] **Context's OAuth apps.** GitHub device flow and Google's Desktop app client are configured, their credentials are saved as repository secrets, and both browser sign-ins have completed live. GitHub token expiration is disabled. See [Sources](sources.md#contexts-oauth-apps).
+- [ ] **Built-in calendar connectors.** Google Calendar's OAuth sign-in, event-list request and persisted grant are verified live. Microsoft 365 is not started. A public Google release needs OAuth verification; the app currently allows listed test users only.
 - [x] **Suggestions on the card.** When an answer needed a source that isn't connected, the card offers **Connect calendar** and similar, which opens Settings.
 
 ### Product depth
