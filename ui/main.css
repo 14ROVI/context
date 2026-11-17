@@ -1,0 +1,444 @@
+/* The main window: history on the left, the selected result on the right. */
+
+body {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--canvas);
+  user-select: none;
+  cursor: default;
+}
+
+/* Sidebar */
+
+#sidebar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 296px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 16px 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.capture {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.capture .button {
+  width: 100%;
+  height: 36px;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 16px;
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.section .row {
+  display: flex;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.day {
+  padding: 12px 8px 4px;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.entry {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entry:hover {
+  background: var(--hover);
+}
+
+.entry.selected {
+  background: var(--selected);
+}
+
+.entry .headline {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.entry .meta {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.empty {
+  padding: 4px 8px;
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.sources {
+  display: grid;
+  gap: 4px;
+  padding: 4px 16px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.sources .section {
+  padding: 0;
+}
+
+.source {
+  display: grid;
+  grid-template-columns: 7px 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.source .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.source.error .dot {
+  background: var(--danger);
+}
+
+.source.idle .dot {
+  background: var(--subtle);
+}
+
+.source .name {
+  font-weight: 500;
+}
+
+.source .detail {
+  grid-column: 2;
+  color: var(--subtle);
+}
+
+.sources .note {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.sources .problem {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.account .who {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account .email {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.account .link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--subtle);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.account .link:hover {
+  color: var(--text);
+}
+
+.account .working {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account .working .dots,
+.capture .dots {
+  color: var(--accent);
+}
+
+.capture .button .dots {
+  color: var(--on-accent);
+}
+
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Main area */
+
+#main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 24px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  font-size: 13px;
+}
+
+.banner::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.banner.error {
+  background: var(--danger-soft);
+}
+
+.banner.error::before {
+  background: var(--danger);
+}
+
+.banner .message {
+  flex: 1;
+  min-width: 0;
+}
+
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 32px 40px;
+  user-select: text;
+  cursor: auto;
+}
+
+.page > div {
+  max-width: 640px;
+}
+
+.when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--subtle);
+  font-size: 13px;
+}
+
+.page h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 33px;
+}
+
+.summary {
+  margin: 12px 0 0;
+  font-size: 16px;
+  line-height: 25px;
+}
+
+.details {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  line-height: 23px;
+}
+
+.details p {
+  margin: 0;
+}
+
+.page .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 32px;
+}
+
+.shot-label {
+  margin: 32px 0 8px;
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.provenance {
+  margin-top: 24px;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+/* Welcome */
+
+.welcome {
+  display: grid;
+  gap: 24px;
+  margin: 16px auto 0;
+  max-width: 560px;
+}
+
+.welcome h1 {
+  margin: 0 0 8px;
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 23px;
+}
+
+.steps {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.step + .step {
+  border-top: 1px solid var(--border);
+}
+
+.step .number {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.step .label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.step .done {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.step .note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.examples {
+  display: grid;
+  gap: 8px;
+}
+
+.example {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--sidebar);
+  font-size: 13px;
+}
+
+.example b {
+  display: block;
+  font-weight: 500;
+}
+
+.example span {
+  color: var(--muted);
+}

@@ -1,17 +1,16 @@
 // Release builds on Windows run without a console window. Debug builds keep one for logs.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod app;
 mod capture;
 mod chatgpt;
-mod desktop;
 mod history;
-mod instance;
 mod sources;
 mod storage;
 
 use std::process::ExitCode;
 
-use instance::{Launch, Remote};
+use app::Launch;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -54,12 +53,12 @@ fn main() -> ExitCode {
         log_mcp_transport();
     }
     let command = match std::env::args().nth(1).as_deref() {
-        None => Remote::Open,
+        None => Launch::Open,
         Some("-h" | "--help" | "help") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
         }
-        Some(word) => match Remote::parse(word) {
+        Some(word) => match Launch::parse(word) {
             Some(command) => command,
             None => {
                 eprintln!("context: unknown command `{word}`.\n\n{USAGE}");
@@ -67,11 +66,9 @@ fn main() -> ExitCode {
             }
         },
     };
-    let result = instance::claim(command).and_then(|launch| match launch {
-        Launch::Forwarded => Ok(()),
-        Launch::Primary(instance) => desktop::run(instance, command),
-    });
-    match result {
+    // When Context is already running, the single-instance plugin hands this
+    // command to it and this process exits.
+    match app::run(command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("context: {error}");

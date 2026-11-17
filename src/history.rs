@@ -34,15 +34,6 @@ impl ContextText {
             details,
         })
     }
-
-    pub fn plain_text(&self) -> String {
-        [&self.headline, &self.summary, &self.details]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    }
 }
 
 /// Loads the JPEG saved with an entry, if there is one.

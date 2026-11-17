@@ -12,16 +12,18 @@ cargo run --locked
 
 | Platform | Prerequisites |
 | --- | --- |
-| Windows | MSVC Rust, Visual Studio Build Tools with C++ desktop tools, and a Direct3D 11-capable graphics driver. |
+| Windows | MSVC Rust and Visual Studio Build Tools with C++ desktop tools. The WebView2 runtime ships with Windows 11. |
 | macOS | Xcode and its command-line tools. Allow screen recording for Context, or for the terminal launching it, when macOS asks. |
-| Linux | A graphical session, a Vulkan-capable driver and a running Secret Service keyring. Wayland needs a screenshot portal. The tray icon needs StatusNotifier support. |
+| Linux | A graphical session with a compositor, WebKitGTK 4.1 and a running Secret Service keyring. Wayland needs a screenshot portal. The tray icon needs AppIndicator support. |
+
+No Node.js or Tauri CLI is needed: the pages in `ui/` are plain files that `cargo build` embeds.
 
 On Ubuntu, Context and its dependencies use these development packages:
 
 ```sh
-sudo apt install build-essential pkg-config clang libclang-dev libasound2-dev \
-  libdbus-1-dev libegl-dev libfontconfig1-dev libpipewire-0.3-dev libssl-dev \
-  libwayland-dev libx11-dev libxcb1-dev libxext-dev libxkbcommon-dev libxkbcommon-x11-dev libxrandr-dev
+sudo apt install build-essential pkg-config clang libclang-dev libssl-dev \
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev \
+  libdbus-1-dev libpipewire-0.3-dev libwayland-dev libx11-dev libxcb1-dev libxrandr-dev
 ```
 
 Debug builds on Windows keep a console for logs. Release builds run without one.
@@ -33,9 +35,9 @@ Debug builds on Windows keep a console for logs. Release builds run without one.
 3. A card opens in the corner while Context reads the screen. It shows the answer when ready. Choose **Open details** for the full text, or **Copy**.
 4. Optionally, connect [sources](sources.md) such as a calendar so answers can check more than the screen.
 
-The **Capture screen** button minimizes Context and captures the app behind it. On Wayland, add a desktop shortcut that runs `context capture`. Running `context` again brings the open window forward.
+The **Capture screen** button hides Context and captures the app behind it. On Wayland, add a desktop shortcut that runs `context capture`. Running `context` again brings the open window forward.
 
-Closing the window minimizes it, and Context keeps running. Click the tray icon to bring it back. Quit from the window or tray, or press **Ctrl+C** in the terminal. Set `CONTEXT_MODEL` before launch to choose another image-capable model on your plan. Manage plan usage in [ChatGPT settings](https://chatgpt.com/settings/usage).
+Closing the window hides it, and Context keeps running in the tray. Click the tray icon to bring it back. Quit from the window or tray. Set `CONTEXT_MODEL` before launch to choose another image-capable model on your plan. Manage plan usage in [ChatGPT settings](https://chatgpt.com/settings/usage).
 
 History keeps the latest 100 results in your local app-data folder. Records are encrypted with a key stored in your system credential store. Results show the app that was in focus when the desktop reports it. Each result keeps the screenshot it came from, encrypted in a `screenshots` subfolder. You can copy or delete a result, or clear all history. Deleting a result deletes its screenshot.
 

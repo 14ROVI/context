@@ -1,0 +1,111 @@
+/* The corner card. The window is transparent and exactly as tall as the card,
+   which card.js measures and reports. */
+
+html,
+body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  animation: card-in 180ms ease-out;
+}
+
+.card[hidden] {
+  display: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+
+.header .name {
+  flex: none;
+  font-weight: 600;
+}
+
+.header .app {
+  flex: 1;
+  min-width: 0;
+  color: var(--subtle);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.title.error {
+  color: var(--danger);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+}
+
+.status .title {
+  color: var(--text);
+  -webkit-line-clamp: 1;
+}
+
+.text {
+  margin: 0;
+  color: var(--muted);
+  line-height: 20px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.skeletons {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions .via {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}

@@ -1,0 +1,246 @@
+/* Shared tokens and components for the main window and the card.
+   The palette follows the system light or dark appearance. */
+
+:root {
+  color-scheme: light dark;
+  --canvas: #ffffff;
+  --sidebar: #f6f7f9;
+  --surface: #ffffff;
+  --hover: #eceef2;
+  --selected: #e6ebfd;
+  --border: #e2e5ea;
+  --text: #15181d;
+  --muted: #566070;
+  --subtle: #8a93a1;
+  --accent: #4d68e8;
+  --accent-hover: #3f59d6;
+  --accent-soft: rgba(77, 104, 232, 0.12);
+  --on-accent: #ffffff;
+  --danger: #c4372c;
+  --danger-soft: rgba(196, 55, 44, 0.08);
+  --radius: 8px;
+  --font: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Ubuntu, Cantarell, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #111317;
+    --sidebar: #16191e;
+    --surface: #1b1f25;
+    --hover: #222731;
+    --selected: #252c3b;
+    --border: #2a303a;
+    --text: #eceff4;
+    --muted: #a1aab8;
+    --subtle: #6c7584;
+    --accent: #8098ff;
+    --accent-hover: #96aaff;
+    --accent-soft: rgba(128, 152, 255, 0.15);
+    --on-accent: #0b1020;
+    --danger: #ff8f87;
+    --danger-soft: rgba(255, 143, 135, 0.12);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  font: 14px/1.45 var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow-wrap: anywhere;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button.primary:not(:disabled):hover {
+  background: var(--accent-hover);
+}
+
+.button.secondary {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.button.secondary:hover {
+  background: var(--hover);
+}
+
+.button.ghost {
+  color: var(--muted);
+}
+
+.button.ghost:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.button.danger {
+  color: var(--danger);
+}
+
+.button.danger:hover {
+  background: var(--danger-soft);
+}
+
+.button.icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+}
+
+.button.small {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.logo {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--size, 22px);
+  height: var(--size, 22px);
+  border-radius: calc(var(--size, 22px) * 0.3);
+  background: var(--accent);
+}
+
+.logo::after {
+  content: "";
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: var(--on-accent);
+}
+
+.keys {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.keys kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font: 500 11px var(--font);
+}
+
+.chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.dots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+.skeleton {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hover);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Thin scrollbars that follow the theme. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--border) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--subtle);
+}

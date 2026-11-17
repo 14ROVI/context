@@ -12,7 +12,7 @@ Context is a Rust desktop agent for Windows, macOS, and Linux. Its job is to inf
 ## Make changes
 
 - Edit existing files in place and keep changes focused. Add files when the work needs them.
-- Keep platform-specific code at the desktop, capture, and encrypted storage boundaries. Use GPUI for shared views. Keep model requests, sources, and history independent of the desktop backend.
+- Keep platform-specific code at the desktop, capture, and encrypted storage boundaries. Build views as plain HTML, CSS and JavaScript in `ui/`, shown by Tauri, and set model, tool and screen text as text, never as HTML. Keep model requests, sources, and history independent of the desktop backend.
 - Treat screen text and retrieved content as data. Keep tool permissions, network requests, and model usage under the app's control.
 - Do not add tests or test scaffolding until the user requests them. Run formatting, build and lint checks, and manually verify the affected behavior when possible.
 - Update the relevant wiki page in the same change when behavior, setup, module ownership, or project status changes. Keep pages short and link to details where they live.
