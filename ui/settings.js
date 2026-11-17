@@ -246,7 +246,7 @@ function privacySection(state) {
     ),
     h("div", { class: "label" }, "Keep history for"),
     h("div", { class: "row" }, retention),
-    h("p", { class: "note" }, "Each saved screenshot takes about 200 KB. Delete results or clear history at any time."),
+    h("p", { class: "note" }, "Each saved screenshot takes about 200 KB. You can clear history at any time."),
     h("div", { class: "label" }, "Never capture these apps"),
     excluded,
     h("p", { class: "note" }, "Context drops the capture before anything leaves your computer. Names match partially and ignore case."),

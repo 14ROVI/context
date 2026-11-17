@@ -58,9 +58,6 @@ pub struct Field {
     /// An HTTP header for remote servers, or an environment variable for packages.
     #[serde(default)]
     pub header: bool,
-    /// Text placed before the value, such as `Bearer `.
-    #[serde(default)]
-    pub prefix: String,
 }
 
 /// Hosted servers that let Context register itself, so adding one is a
@@ -89,34 +86,14 @@ pub fn featured() -> Vec<Entry> {
         note: (!google::available())
             .then(|| "This build of Context has no Google sign-in yet.".into()),
     };
-    let github_oauth = mcp::builtin_client("https://github.com/login/oauth").is_some();
-    let github = Entry {
-        id: "remote:github".into(),
-        name: "GitHub".into(),
-        description: "Issues, pull requests and code in your repositories. Read-only.".into(),
-        install: Install::Remote {
-            url: "https://api.githubcopilot.com/mcp/readonly".into(),
-        },
-        // Context's GitHub app is built in; the token form is a fallback.
-        fields: if github_oauth {
-            Vec::new()
-        } else {
-            vec![Field {
-                name: "Authorization".into(),
-                description: "A GitHub personal access token with read access".into(),
-                secret: true,
-                required: true,
-                header: true,
-                prefix: "Bearer ".into(),
-            }]
-        },
-        sign_in: github_oauth,
-        available: true,
-        note: None,
-    };
     vec![
         google,
-        github,
+        remote(
+            "remote:github",
+            "GitHub",
+            "Issues, pull requests and code in your repositories. Read-only.",
+            "https://api.githubcopilot.com/mcp/readonly",
+        ),
         remote(
             "remote:notion",
             "Notion",
@@ -182,7 +159,6 @@ fn from_registry(server: &Value) -> Option<Entry> {
         secret: item["isSecret"] == true,
         required: item["isRequired"] == true,
         header,
-        prefix: String::new(),
     };
     if let Some(remote) = server["remotes"]
         .as_array()
@@ -304,9 +280,9 @@ pub fn add(entry: &Entry, values: &Map<String, Value>) -> Result<Added> {
         let stored = if field.secret {
             let secret = format!("{name}/{}", field.name);
             mcp::save_secret(&secret, value)?;
-            format!("{}${{secret:{secret}}}", field.prefix)
+            format!("${{secret:{secret}}}")
         } else {
-            format!("{}{value}", field.prefix)
+            value.to_owned()
         };
         settings.insert(field.name.clone(), Value::String(stored));
     }

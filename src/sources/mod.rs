@@ -44,7 +44,8 @@ pub struct ToolDef {
 }
 
 /// What the main window shows for each source.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SourceStatus {
     pub name: String,
     /// Tools the model may call.
@@ -294,8 +295,7 @@ impl Sources {
             .url
             .as_deref()
             .ok_or("Only remote servers sign in.")?;
-        let (endpoints, _supported) =
-            oauth::discover(&self.http, url, challenge.metadata.as_deref())?;
+        let endpoints = oauth::discover(&self.http, url, challenge.metadata.as_deref())?;
         let builtin = mcp::builtin_client(&endpoints.issuer);
         let (client, scopes) = match (&config.oauth, &builtin) {
             (Some(own), _) => (
@@ -309,7 +309,7 @@ impl Sources {
             // Otherwise ask for what the server's 401 asked for.
             (None, None) => (None, challenge.scope.clone()),
         };
-        if endpoints.issuer.trim_end_matches('/') == "https://github.com/login/oauth" {
+        if mcp::is_github(&endpoints.issuer) {
             let client = client
                 .ok_or("This build has no GitHub client ID. Add one under oauth in mcp.json.")?;
             let grant = oauth::github_sign_in(&self.http, &client, scopes.as_deref(), prompt)?;

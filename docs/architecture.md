@@ -17,7 +17,7 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 | --- | --- |
 | [`src/main.rs`](../src/main.rs) | Command line (`open`, `capture`), debug logging and startup. |
 | [`src/app/mod.rs`](../src/app/mod.rs) | Tauri setup, the controller thread and published state. |
-| [`src/app/worker.rs`](../src/app/worker.rs) | The worker thread: captures, model requests, follow-ups, sign-in, API keys and sources. |
+| [`src/app/worker.rs`](../src/app/worker.rs) | The worker thread: captures, model requests, sign-in, API keys and sources. |
 | [`src/app/watch.rs`](../src/app/watch.rs) | Automatic cards: notices new text in the focused window and passes likely questions on. |
 | [`src/ocr.rs`](../src/ocr.rs) | Local text recognition with `ocrs`. |
 | [`src/app/commands.rs`](../src/app/commands.rs) | The commands the pages call. |
@@ -28,7 +28,7 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 | [`ui/settings.js`](../ui/settings.js) | The Settings page. |
 | [`ui/theme.css`](../ui/theme.css), [`ui/dom.js`](../ui/dom.js) | Light and dark palette, shared components and DOM helpers. |
 | [`src/capture.rs`](../src/capture.rs) | Display choice, focused-window metadata and JPEG encoding. |
-| [`src/model/mod.rs`](../src/model/mod.rs) | `Assistant`, which sends a request to the provider chosen in Settings, and errors that say how to fix them. |
+| [`src/model/mod.rs`](../src/model/mod.rs) | `Assistant`, which sends a request to the provider chosen in Settings, the tool-call limit both providers share, and errors that say how to fix them. |
 | [`src/model/prompt.rs`](../src/model/prompt.rs) | Instructions, limits and parsing of the final answer, shared by every provider. |
 | [`src/model/chatgpt/`](../src/model/chatgpt) | Sign in with ChatGPT: browser OAuth, account registration, token refresh and sign-out. |
 | [`src/model/openai.rs`](../src/model/openai.rs) | The Responses API for a ChatGPT plan or an OpenAI API key, with the tool-calling loop. |
@@ -38,6 +38,7 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 | [`ui/sources.js`](../ui/sources.js) | The Sources section of Settings. |
 | [`src/history.rs`](../src/history.rs) | Entry format, text limits, retention and screenshots. |
 | [`src/storage.rs`](../src/storage.rs) | Data folder and encrypted records. |
+| [`src/callback.rs`](../src/callback.rs) | The localhost listener that browser sign-ins for ChatGPT and sources return to. |
 
 ## Cross-platform approach
 
@@ -63,7 +64,7 @@ The one exception is in [`sources/mcp.rs`](../src/sources/mcp.rs), which starts 
 
 The controller thread owns app state and handles events from the pages, tray, shortcut, single-instance plugin and worker. After each change it publishes a snapshot to the main window as a `state` event, and card changes as `card` events. Pages read the current snapshot with `get_state` or `get_card` when they load.
 
-One worker thread serializes blocking work: account checks, sign-in, sign-out, API keys, model lists, connecting sources, captures and follow-ups. It keeps its own copy of the settings, which the controller sends after each change. The worker owns the MCP connections and drives them on a small Tokio runtime. Each model turn is one request with `store: false`, and encrypted reasoning is carried between tool rounds.
+One worker thread serializes blocking work: account checks, sign-in, sign-out, API keys, model lists, connecting sources and captures. It keeps its own copy of the settings, which the controller sends after each change. The worker owns the MCP connections and drives them on a small Tokio runtime. Each model turn is one request with `store: false`, and encrypted reasoning is carried between tool rounds.
 
 ## Automatic cards
 

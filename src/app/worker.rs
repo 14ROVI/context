@@ -6,12 +6,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use async_channel::{Receiver, Sender};
-use uuid::Uuid;
 
 use super::{Event, Problem};
 use crate::Result;
 use crate::capture::{self, Focus};
-use crate::history::{self, Entry, FollowUp};
 use crate::model::{Answer, Assistant, Fix, Request, needs};
 use crate::settings::{Provider, Settings};
 use crate::sources::catalog::{self, Added, Entry as CatalogEntry};
@@ -25,10 +23,6 @@ pub enum Job {
     /// New on-screen text from automatic cards: ask the cheap gate model,
     /// then run a quiet full check if it says yes.
     AutoCandidate(String),
-    FollowUp {
-        entry: Entry,
-        question: String,
-    },
     SignIn,
     SignOut,
     ReloadSources,
@@ -59,10 +53,6 @@ pub enum Report {
         result: std::result::Result<Answer, Problem>,
         /// The JPEG that was analyzed, kept with a saved result.
         screenshot: Option<Vec<u8>>,
-    },
-    FollowUp {
-        id: Uuid,
-        result: std::result::Result<FollowUp, Problem>,
     },
     SignedIn(std::result::Result<String, Problem>),
     SignedOut(String),
@@ -122,14 +112,6 @@ pub fn start(
                         } else {
                             true
                         }
-                    }
-                    Job::FollowUp { entry, question } => {
-                        let result =
-                            follow_up(&mut assistant, &sources, &settings, &entry, &question);
-                        send(Report::FollowUp {
-                            id: entry.id,
-                            result,
-                        })
                     }
                     Job::ReloadSources => {
                         sources.reload(&settings.connectors);
@@ -264,28 +246,5 @@ fn analyze(
         quiet,
         result,
         screenshot: Some(snapshot.jpeg),
-    })
-}
-
-fn follow_up(
-    assistant: &mut Assistant,
-    sources: &Sources,
-    settings: &Settings,
-    entry: &Entry,
-    question: &str,
-) -> std::result::Result<FollowUp, Problem> {
-    assistant.ensure_ready(settings).map_err(Problem::from)?;
-    let screenshot = history::screenshot(entry);
-    let request = Request::follow_up(&entry.conversation(), question, screenshot.as_deref());
-    let progress = |_: String| {};
-    let answer = assistant
-        .ask(&request, sources, &progress, settings)
-        .map_err(Problem::from)?;
-    Ok(FollowUp {
-        question: question.to_owned(),
-        answer: answer
-            .text
-            .unwrap_or_else(|| "I don't have anything to add on that.".into()),
-        sources: answer.sources,
     })
 }

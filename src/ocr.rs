@@ -4,8 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use image::DynamicImage;
-use image::RgbaImage;
+use image::buffer::ConvertBuffer;
+use image::imageops::{FilterType, resize};
+use image::{RgbImage, RgbaImage};
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use rten::Model;
 
@@ -36,11 +37,14 @@ impl Reader {
 
     /// The lines of text in `image`, top to bottom.
     pub fn lines(&self, image: &RgbaImage) -> Result<Vec<String>> {
-        let mut picture = DynamicImage::ImageRgba8(image.clone());
-        if picture.width() > MAX_WIDTH {
-            picture = picture.resize(MAX_WIDTH, u32::MAX, image::imageops::FilterType::Triangle);
-        }
-        let rgb = picture.into_rgb8();
+        let rgb: RgbImage = if image.width() > MAX_WIDTH {
+            let height = (u64::from(image.height()) * u64::from(MAX_WIDTH)
+                / u64::from(image.width()))
+            .max(1) as u32;
+            resize(image, MAX_WIDTH, height, FilterType::Triangle).convert()
+        } else {
+            image.convert()
+        };
         let source = ImageSource::from_bytes(rgb.as_raw(), rgb.dimensions())?;
         let input = self.engine.prepare_input(source)?;
         let words = self.engine.detect_words(&input)?;

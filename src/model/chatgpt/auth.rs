@@ -1,15 +1,16 @@
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use openidconnect::core::{CoreIdToken, CoreIdTokenVerifier, CoreJsonWebKeySet};
 use openidconnect::{ClientId, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge};
 use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize};
-use tiny_http::{Method, Response as LocalResponse, Server};
 use url::Url;
 use uuid::Uuid;
 
 use super::{AUTH_ISSUER, PLAN_SCOPE, RESOURCE, sign_in_required};
 use crate::Result;
+use crate::callback::{Callback, parameter};
+use crate::model::short;
 use crate::storage::{self, Record};
 
 const AUTHORIZE: &str = "https://auth.openai.com/api/accounts/authorize";
@@ -113,8 +114,8 @@ impl Tokens {
 pub(super) fn sign_in(http: &Client, settings: &mut Settings) -> Result<String> {
     // Persist the installation identity before the first browser round trip.
     settings.save()?;
-    let listener = Server::http("127.0.0.1:0")?;
-    let redirect = format!("http://{}{CALLBACK}", listener.server_addr());
+    let callback = Callback::listen(CALLBACK)?;
+    let redirect = callback.redirect.clone();
     let state = CsrfToken::new_random();
     let nonce = Nonce::new_random();
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -142,46 +143,9 @@ pub(super) fn sign_in(http: &Client, settings: &mut Settings) -> Result<String> 
             query.append_pair("prompt", "consent");
         }
     }
-    open::that_detached(authorize.as_str())
-        .map_err(|_| "Could not open the ChatGPT sign-in page.")?;
-
-    let deadline = Instant::now() + Duration::from_secs(180);
-    let base = Url::parse(&redirect)?;
-    while let Some(request) =
-        listener.recv_timeout(deadline.saturating_duration_since(Instant::now()))?
-    {
-        let callback = base.join(request.url());
-        let valid = callback.as_ref().is_ok_and(|url| {
-            url.origin() == base.origin()
-                && url.path() == CALLBACK
-                && unique_parameter(url, "state").as_deref() == Some(state.secret().as_str())
-        });
-        if request.method() != &Method::Get || !valid {
-            let _ = request.respond(
-                LocalResponse::from_string("This request does not match the Context sign-in.")
-                    .with_status_code(400),
-            );
-            if Instant::now() >= deadline {
-                break;
-            }
-            continue;
-        }
-        let outcome = exchange_callback(
-            http,
-            settings,
-            &callback?,
-            &redirect,
-            verifier.secret(),
-            &nonce,
-        );
-        let message = match &outcome {
-            Ok(_) => "Context is connected. You can close this tab and return to your work.",
-            Err(_) => "Context could not finish signing in. Check the Context window for details.",
-        };
-        let _ = request.respond(browser_page(message, outcome.is_ok()));
-        return outcome;
-    }
-    Err("ChatGPT sign-in timed out. Choose Connect ChatGPT to try again.".into())
+    callback.wait(&authorize, state.secret(), "ChatGPT", |url| {
+        exchange_callback(http, settings, url, &redirect, verifier.secret(), &nonce)
+    })
 }
 
 fn exchange_callback(
@@ -192,16 +156,15 @@ fn exchange_callback(
     verifier: &str,
     nonce: &Nonce,
 ) -> Result<String> {
-    if let Some(error) = unique_parameter(callback, "error") {
+    if let Some(error) = parameter(callback, "error") {
         crate::debug(format_args!(
             "sign-in callback error={error} description={:?}",
-            unique_parameter(callback, "error_description")
+            parameter(callback, "error_description")
         ));
         return Err("ChatGPT sign-in was cancelled or declined.".into());
     }
-    let code =
-        unique_parameter(callback, "code").ok_or("ChatGPT did not return a sign-in code.")?;
-    let returned_id = unique_parameter(callback, "client_id");
+    let code = parameter(callback, "code").ok_or("ChatGPT did not return a sign-in code.")?;
+    let returned_id = parameter(callback, "client_id");
     let account = match settings.account.as_ref() {
         Some(account) => {
             if returned_id
@@ -278,23 +241,6 @@ fn exchange_callback(
     Ok(email)
 }
 
-/// A small page for the browser tab that finished sign-in.
-fn browser_page(message: &str, connected: bool) -> LocalResponse<std::io::Cursor<Vec<u8>>> {
-    let mark = if connected { "&#10003;" } else { "!" };
-    let html = format!(
-        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>         <title>Context</title><style>body{{font:16px system-ui,sans-serif;display:grid;         place-items:center;min-height:90vh;margin:0;background:#f6f7f9;color:#15181d}}         @media(prefers-color-scheme:dark){{body{{background:#111317;color:#eceff4}}}}         div{{text-align:center;max-width:26rem;padding:1rem}}b{{display:block;font-size:2rem;         margin-bottom:.5rem;color:#5b74f0}}</style><div><b>{mark}</b>{message}</div>"
-    );
-    let header = tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8")
-        .expect("static header is valid");
-    LocalResponse::from_data(html.into_bytes()).with_header(header)
-}
-
-fn unique_parameter(url: &Url, name: &str) -> Option<String> {
-    let mut values = url.query_pairs().filter(|(key, _)| *key == name);
-    let value = values.next()?.1.into_owned();
-    (values.next().is_none() && !value.is_empty()).then_some(value)
-}
-
 pub(super) fn refresh_if_needed(http: &Client, settings: &mut Settings) -> Result<()> {
     let account = settings
         .account
@@ -339,7 +285,8 @@ pub(super) fn sign_out(http: &Client, settings: &mut Settings) -> Result<String>
         Ok("Signed out of ChatGPT.".into())
     } else {
         Ok(
-            "Signed out on this computer. To revoke access everywhere, disconnect Context in              ChatGPT settings."
+            "Signed out on this computer. To revoke access everywhere, disconnect Context \
+             in ChatGPT settings."
                 .into(),
         )
     }
@@ -371,11 +318,6 @@ fn token_request(http: &Client, form: &[(&str, &str)]) -> Result<Tokens> {
         return Ok(response.json()?);
     }
     Err(token_error(response))
-}
-
-/// A JSON value cut to a readable length for diagnostics.
-pub(super) fn short(value: &serde_json::Value) -> String {
-    value.to_string().chars().take(2_000).collect()
 }
 
 fn token_error(response: Response) -> Box<dyn std::error::Error + Send + Sync> {

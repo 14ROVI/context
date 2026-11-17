@@ -84,6 +84,13 @@ pub fn read_config() -> Result<Config> {
         .map_err(|error| format!("{CONFIG_FILE} could not be read: {error}").into())
 }
 
+/// Where GitHub signs people in.
+const GITHUB_ISSUER: &str = "https://github.com/login/oauth";
+
+pub fn is_github(issuer: &str) -> bool {
+    issuer.trim_end_matches('/') == GITHUB_ISSUER
+}
+
 /// Context's GitHub OAuth app. Device flow needs no secret, and a client ID is
 /// public, so it ships in the code.
 const GITHUB_CLIENT_ID: &str = "Ov23lim0dhPPM7VljAnZ";
@@ -92,7 +99,7 @@ const GITHUB_CLIENT_ID: &str = "Ov23lim0dhPPM7VljAnZ";
 /// register clients themselves, with the scopes it asks for.
 /// `CONTEXT_GITHUB_CLIENT_ID`, at build or run time, replaces the default.
 pub fn builtin_client(issuer: &str) -> Option<(ClientId, &'static str)> {
-    if issuer.trim_end_matches('/') != "https://github.com/login/oauth" {
+    if !is_github(issuer) {
         return None;
     }
     let id = option_env!("CONTEXT_GITHUB_CLIENT_ID")

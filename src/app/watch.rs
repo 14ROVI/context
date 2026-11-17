@@ -18,7 +18,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use async_channel::Sender;
-use image::{DynamicImage, GrayImage};
+use image::GrayImage;
 
 use super::Event;
 use crate::capture;
@@ -186,8 +186,11 @@ impl Watcher {
             Some(dir) => Reader::load(dir).map_err(|error| {
                 format!("Automatic cards could not load text recognition. {error}")
             }),
-            None => Err("Automatic cards need Context's text recognition files, which are                          missing. Reinstall Context."
-                .into()),
+            None => Err(
+                "Automatic cards need Context's text recognition files, which are missing. \
+                 Reinstall Context."
+                    .into(),
+            ),
         };
         match loaded {
             Ok(reader) => {
@@ -262,13 +265,13 @@ impl Watcher {
 
 /// A small greyscale thumbnail, enough to notice a new line of text.
 fn thumbnail(image: &image::RgbaImage) -> GrayImage {
-    DynamicImage::ImageRgba8(image.clone())
-        .resize_exact(
-            THUMB_WIDTH,
-            THUMB_HEIGHT,
-            image::imageops::FilterType::Triangle,
-        )
-        .to_luma8()
+    use image::imageops::{FilterType, grayscale, resize};
+    grayscale(&resize(
+        image,
+        THUMB_WIDTH,
+        THUMB_HEIGHT,
+        FilterType::Triangle,
+    ))
 }
 
 /// How many thumbnail pixels changed noticeably. Counting pixels, rather than

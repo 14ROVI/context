@@ -5,8 +5,8 @@
 use reqwest::blocking::{Client, RequestBuilder};
 use serde_json::{Value, json};
 
-use super::prompt::{self, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS};
-use super::{Answer, Fix, Request, needs};
+use super::prompt::{self, MAX_TOOL_ROUNDS};
+use super::{Answer, Fix, Lookups, Request, base64, needs, short};
 use crate::Result;
 use crate::sources::Sources;
 
@@ -59,13 +59,13 @@ pub fn analyze(
     sources: &Sources,
     progress: &dyn Fn(String),
 ) -> Result<Answer> {
-    let mut first = vec![json!({"type": "text", "text": request.text})];
-    if let Some(jpeg) = request.image {
-        first.push(json!({
+    let first = json!([
+        {"type": "text", "text": request.text},
+        {
             "type": "image",
-            "source": {"type": "base64", "media_type": "image/jpeg", "data": base64_jpeg(jpeg)},
-        }));
-    }
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": base64(request.image)},
+        },
+    ]);
     let mut messages = vec![json!({"role": "user", "content": first})];
     let tools: Vec<Value> = sources
         .definitions()
@@ -79,8 +79,7 @@ pub fn analyze(
         })
         .collect();
     let fallback = FALLBACK_MODELS.contains(&model);
-    let mut used = Vec::new();
-    let mut calls_left = MAX_TOOL_CALLS;
+    let mut lookups = Lookups::new(sources, progress);
 
     for round in 0..=MAX_TOOL_ROUNDS {
         let mut body = json!({
@@ -93,7 +92,7 @@ pub fn analyze(
         if !tools.is_empty() {
             body["tools"] = json!(tools);
             // The last round asks for the answer, with no more lookups.
-            if round == MAX_TOOL_ROUNDS || calls_left == 0 {
+            if round == MAX_TOOL_ROUNDS || !lookups.left() {
                 body["tool_choice"] = json!({"type": "none"});
             }
         }
@@ -113,7 +112,7 @@ pub fn analyze(
         if !(200..300).contains(&status) {
             crate::debug(format_args!(
                 "Anthropic request failed (HTTP {status}): {}",
-                reply.to_string().chars().take(2_000).collect::<String>()
+                short(&reply)
             ));
             return Err(api_error(&reply, status));
         }
@@ -137,7 +136,7 @@ pub fn analyze(
             let (text, needs) = prompt::finish(&text);
             return Ok(Answer {
                 text,
-                sources: used,
+                sources: lookups.used,
                 needs,
             });
         }
@@ -146,28 +145,10 @@ pub fn analyze(
         messages.push(json!({"role": "assistant", "content": content.clone()}));
         let mut results = Vec::new();
         for call in calls {
-            let name = call["name"].as_str().unwrap_or_default();
-            let arguments = call["input"].to_string();
-            crate::debug(format_args!("tool call {name} arguments {arguments}"));
-            let (output, failed) = if calls_left == 0 {
-                (
-                    "Context's limit on lookups for one capture was reached.".to_owned(),
-                    true,
-                )
-            } else {
-                calls_left -= 1;
-                if let Some(label) = sources.label(name) {
-                    progress(format!("Checking {label}…"));
-                }
-                let output = sources.call(name, &arguments);
-                let failed = output.source.is_none();
-                if let Some(source) = output.source
-                    && !used.contains(&source)
-                {
-                    used.push(source);
-                }
-                (output.text, failed)
-            };
+            let (output, failed) = lookups.call(
+                call["name"].as_str().unwrap_or_default(),
+                &call["input"].to_string(),
+            );
             results.push(json!({
                 "type": "tool_result",
                 "tool_use_id": call["id"],
@@ -210,11 +191,6 @@ pub fn quick(http: &Client, key: &str, system: &str, text: &str) -> Result<Strin
         .filter_map(|block| block["text"].as_str())
         .collect::<Vec<_>>()
         .join(""))
-}
-
-fn base64_jpeg(jpeg: &[u8]) -> String {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD.encode(jpeg)
 }
 
 fn api_error(body: &Value, status: u16) -> Box<dyn std::error::Error + Send + Sync> {

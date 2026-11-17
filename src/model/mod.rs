@@ -57,11 +57,11 @@ pub fn needs(fix: Fix, message: impl Into<String>) -> Box<dyn Error + Send + Syn
     })
 }
 
-/// What to ask the model: instructions, text and an optional screenshot.
+/// What to ask the model: instructions, text and a screenshot.
 pub struct Request<'a> {
     pub instructions: String,
     pub text: String,
-    pub image: Option<&'a [u8]>,
+    pub image: &'a [u8],
 }
 
 impl<'a> Request<'a> {
@@ -77,23 +77,7 @@ impl<'a> Request<'a> {
         Self {
             instructions,
             text,
-            image: Some(&snapshot.jpeg),
-        }
-    }
-
-    /// Asks a follow-up about an earlier answer, with the screenshot it came
-    /// from when one was saved.
-    pub fn follow_up(earlier: &str, question: &str, image: Option<&'a [u8]>) -> Self {
-        Self {
-            instructions: prompt::FOLLOW_UP.to_owned(),
-            text: format!(
-                "Earlier conversation:
-{earlier}
-
-Follow-up question from the user:
-{question}"
-            ),
-            image,
+            image: &snapshot.jpeg,
         }
     }
 }
@@ -176,14 +160,11 @@ impl Assistant {
             return Ok(models.clone());
         }
         let models = match provider {
-            Provider::ChatGpt => {
-                let token = self.chatgpt.access_token()?;
-                openai::list_models(&self.http, &token, openai::Service::Plan)?
-            }
-            Provider::OpenAi => {
-                openai::list_models(&self.http, &api_key(provider)?, openai::Service::ApiKey)?
-            }
             Provider::Anthropic => anthropic::list_models(&self.http, &api_key(provider)?)?,
+            _ => {
+                let (token, service) = self.openai_token(provider)?;
+                openai::list_models(&self.http, &token, service)?
+            }
         };
         self.models.insert(provider, models.clone());
         Ok(models)
@@ -193,35 +174,15 @@ impl Assistant {
     /// full check. Text only; no screenshot is sent.
     pub fn worth_a_look(&mut self, text: &str, settings: &Settings) -> Result<bool> {
         let reply = match settings.provider {
-            Provider::ChatGpt => {
-                let token = self.chatgpt.access_token()?;
-                let models = self.models(Provider::ChatGpt)?;
-                let model = openai::cheap_model(&models, openai::Service::Plan)?;
-                openai::quick(
-                    &self.http,
-                    &token,
-                    &model,
-                    prompt::GATE,
-                    text,
-                    openai::Service::Plan,
-                )?
-            }
-            Provider::OpenAi => {
-                let key = api_key(Provider::OpenAi)?;
-                let models = self.models(Provider::OpenAi)?;
-                let model = openai::cheap_model(&models, openai::Service::ApiKey)?;
-                openai::quick(
-                    &self.http,
-                    &key,
-                    &model,
-                    prompt::GATE,
-                    text,
-                    openai::Service::ApiKey,
-                )?
-            }
             Provider::Anthropic => {
                 let key = api_key(Provider::Anthropic)?;
                 anthropic::quick(&self.http, &key, prompt::GATE, text)?
+            }
+            provider => {
+                let (token, service) = self.openai_token(provider)?;
+                let models = self.models(provider)?;
+                let model = openai::cheap_model(&models, service)?;
+                openai::quick(&self.http, &token, &model, prompt::GATE, text, service)?
             }
         };
         let yes = reply.trim().to_uppercase().starts_with("YES");
@@ -243,46 +204,95 @@ impl Assistant {
     ) -> Result<Answer> {
         let preferred = settings.model.as_deref();
         match settings.provider {
-            Provider::ChatGpt => {
-                let token = self.chatgpt.access_token()?;
-                let models = self.models(Provider::ChatGpt)?;
-                let model = openai::choose_model(&models, preferred, openai::Service::Plan)?;
-                crate::debug(format_args!(
-                    "ChatGPT plan models: {models:?}; using {model}"
-                ));
-                openai::analyze(
-                    &self.http,
-                    &token,
-                    &model,
-                    request,
-                    sources,
-                    progress,
-                    openai::Service::Plan,
-                )
-            }
-            Provider::OpenAi => {
-                let key = api_key(Provider::OpenAi)?;
-                let models = self.models(Provider::OpenAi)?;
-                let model = openai::choose_model(&models, preferred, openai::Service::ApiKey)?;
-                crate::debug(format_args!("OpenAI API: using {model}"));
-                openai::analyze(
-                    &self.http,
-                    &key,
-                    &model,
-                    request,
-                    sources,
-                    progress,
-                    openai::Service::ApiKey,
-                )
-            }
             Provider::Anthropic => {
                 let key = api_key(Provider::Anthropic)?;
                 let model = preferred.unwrap_or(anthropic::DEFAULT_MODEL);
                 crate::debug(format_args!("Anthropic API: using {model}"));
                 anthropic::analyze(&self.http, &key, model, request, sources, progress)
             }
+            provider => {
+                let (token, service) = self.openai_token(provider)?;
+                let models = self.models(provider)?;
+                let model = openai::choose_model(&models, preferred, service)?;
+                crate::debug(format_args!("{provider:?}: using {model} of {models:?}"));
+                openai::analyze(
+                    &self.http, &token, &model, request, sources, progress, service,
+                )
+            }
         }
     }
+
+    /// The bearer token and service for a provider that uses the Responses API.
+    fn openai_token(&mut self, provider: Provider) -> Result<(String, openai::Service)> {
+        match provider {
+            Provider::ChatGpt => Ok((self.chatgpt.access_token()?, openai::Service::Plan)),
+            _ => Ok((api_key(provider)?, openai::Service::ApiKey)),
+        }
+    }
+}
+
+/// Lookups for one request: runs the tool calls the model asks for, within
+/// Context's limit, and remembers which sources answered.
+struct Lookups<'a> {
+    sources: &'a Sources,
+    progress: &'a dyn Fn(String),
+    calls_left: usize,
+    used: Vec<String>,
+}
+
+impl<'a> Lookups<'a> {
+    fn new(sources: &'a Sources, progress: &'a dyn Fn(String)) -> Self {
+        Self {
+            sources,
+            progress,
+            calls_left: prompt::MAX_TOOL_CALLS,
+            used: Vec::new(),
+        }
+    }
+
+    /// Whether the model may still call tools.
+    fn left(&self) -> bool {
+        self.calls_left > 0
+    }
+
+    /// Runs one call. Returns the text for the model and whether it failed.
+    fn call(&mut self, name: &str, arguments: &str) -> (String, bool) {
+        crate::debug(format_args!("tool call {name} arguments {arguments}"));
+        if self.calls_left == 0 {
+            return (
+                "Context's limit on lookups for one capture was reached.".into(),
+                true,
+            );
+        }
+        self.calls_left -= 1;
+        if let Some(label) = self.sources.label(name) {
+            (self.progress)(format!("Checking {label}…"));
+        }
+        let output = self.sources.call(name, arguments);
+        let failed = output.source.is_none();
+        if let Some(source) = output.source
+            && !self.used.contains(&source)
+        {
+            self.used.push(source);
+        }
+        (output.text, failed)
+    }
+}
+
+/// A JSON value cut to a readable length for diagnostics.
+pub fn short(value: &serde_json::Value) -> String {
+    value.to_string().chars().take(2_000).collect()
+}
+
+/// A JPEG as base64, the form both APIs take images in.
+pub fn base64(jpeg: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(jpeg)
+}
+
+/// A JPEG as a `data:` URL.
+pub fn data_url(jpeg: &[u8]) -> String {
+    format!("data:image/jpeg;base64,{}", base64(jpeg))
 }
 
 fn key_record(provider: Provider) -> Option<Record> {

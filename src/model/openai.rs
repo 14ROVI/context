@@ -6,8 +6,8 @@ use std::io::{BufRead, BufReader};
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 
-use super::prompt::{self, MAX_TEXT_CHARS, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS};
-use super::{Answer, Fix, Request, needs};
+use super::prompt::{self, MAX_TEXT_CHARS, MAX_TOOL_ROUNDS};
+use super::{Answer, Fix, Lookups, Request, data_url, needs, short};
 use crate::Result;
 use crate::sources::Sources;
 
@@ -124,22 +124,17 @@ pub(super) fn analyze(
     progress: &dyn Fn(String),
     service: Service,
 ) -> Result<Answer> {
-    let mut content = vec![json!({"type": "input_text", "text": request.text})];
-    if let Some(jpeg) = request.image {
-        content.push(json!({
-            "type": "input_image",
-            "image_url": data_url(jpeg),
-            "detail": "high",
-        }));
-    }
+    let content = json!([
+        {"type": "input_text", "text": request.text},
+        {"type": "input_image", "image_url": data_url(request.image), "detail": "high"},
+    ]);
     let mut input = vec![json!({"role": "user", "content": content})];
     let mut tools = sources.definitions();
-    let mut used = Vec::new();
-    let mut calls_left = MAX_TOOL_CALLS;
+    let mut lookups = Lookups::new(sources, progress);
 
     for round in 0..=MAX_TOOL_ROUNDS {
         // The last round offers no tools, so the model has to answer.
-        let offer_tools = !tools.is_empty() && round < MAX_TOOL_ROUNDS && calls_left > 0;
+        let offer_tools = !tools.is_empty() && round < MAX_TOOL_ROUNDS && lookups.left();
         let mut body = json!({
             "model": model,
             "instructions": request.instructions,
@@ -201,32 +196,16 @@ pub(super) fn analyze(
             let (text, needs) = prompt::finish(&turn.text);
             return Ok(Answer {
                 text,
-                sources: used,
+                sources: lookups.used,
                 needs,
             });
         }
         input.extend(turn.items.iter().cloned());
         for call in calls {
-            let name = call["name"].as_str().unwrap_or_default();
-            crate::debug(format_args!(
-                "tool call {name} arguments {}",
-                call["arguments"].as_str().unwrap_or("{}")
-            ));
-            let output = if calls_left == 0 {
-                "Context's limit on lookups for one capture was reached.".to_owned()
-            } else {
-                calls_left -= 1;
-                if let Some(label) = sources.label(name) {
-                    progress(format!("Checking {label}…"));
-                }
-                let output = sources.call(name, call["arguments"].as_str().unwrap_or("{}"));
-                if let Some(source) = output.source
-                    && !used.contains(&source)
-                {
-                    used.push(source);
-                }
-                output.text
-            };
+            let (output, _) = lookups.call(
+                call["name"].as_str().unwrap_or_default(),
+                call["arguments"].as_str().unwrap_or("{}"),
+            );
             input.push(json!({
                 "type": "function_call_output",
                 "call_id": call["call_id"],
@@ -284,7 +263,12 @@ struct Turn {
 }
 
 enum Failure {
-    Api { status: Option<u16>, body: Value },
+    Api {
+        status: Option<u16>,
+        body: Value,
+    },
+    /// The stream ended before the response completed.
+    Unfinished,
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
@@ -292,6 +276,11 @@ impl Failure {
     fn into_error(self, service: Service) -> Box<dyn std::error::Error + Send + Sync> {
         match self {
             Failure::Api { status, body } => request_error(&body, status, service),
+            Failure::Unfinished => format!(
+                "{} did not finish analyzing the screen. Try again.",
+                service.name()
+            )
+            .into(),
             Failure::Other(error) => error,
         }
     }
@@ -352,33 +341,25 @@ fn send(http: &Client, access_token: &str, body: &Value) -> std::result::Result<
                     body: event,
                 });
             }
-            Some("response.incomplete") => {
-                return Err("ChatGPT did not finish analyzing the screen.".into());
-            }
+            Some("response.incomplete") => return Err(Failure::Unfinished),
             _ => {}
         }
     }
-    Err("ChatGPT closed the response before finishing the screen analysis.".into())
+    Err(Failure::Unfinished)
 }
 
-/// Whether a failed first request looks like the plan or model refusing tools.
+/// Whether a failed first request looks like the plan or model refusing
+/// tools, rather than some other problem that retrying would hide.
 fn rejects_tools(body: &Value, status: Option<u16>) -> bool {
-    let code = body
-        .pointer("/error/code")
-        .or_else(|| body.pointer("/response/error/code"))
-        .and_then(Value::as_str);
-    code == Some("subscription_sharing_unsupported_capability") || status == Some(400)
-}
-
-fn data_url(jpeg: &[u8]) -> String {
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(jpeg);
-    format!("data:image/jpeg;base64,{encoded}")
-}
-
-/// A JSON value cut to a readable length for diagnostics.
-fn short(value: &Value) -> String {
-    value.to_string().chars().take(2_000).collect()
+    let error = |field: &str| {
+        body.pointer(&format!("/error/{field}"))
+            .or_else(|| body.pointer(&format!("/response/error/{field}")))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    error("code") == "subscription_sharing_unsupported_capability"
+        || (status == Some(400) && error("message").to_lowercase().contains("tool"))
 }
 
 fn request_error(

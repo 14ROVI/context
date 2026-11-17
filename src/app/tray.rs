@@ -134,8 +134,12 @@ pub fn register_shortcut(app: &AppHandle, preferred: &str) -> ShortcutView {
         return ShortcutView::Registered(preferred.to_owned());
     }
     for (modifiers, label) in CANDIDATES {
+        // Already tried above.
+        if label == preferred {
+            continue;
+        }
         let shortcut = Shortcut::new(Some(modifiers), Code::Space);
-        if app.global_shortcut().register(shortcut).is_ok() {
+        if shortcuts.register(shortcut).is_ok() {
             return ShortcutView::Registered(label.into());
         }
     }

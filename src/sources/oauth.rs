@@ -9,14 +9,12 @@ use openidconnect::{CsrfToken, PkceCodeChallenge};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tiny_http::{Header, Method, Response, Server};
 use url::Url;
 
 use crate::Result;
+use crate::callback::{Callback, parameter};
 use crate::storage::{self, Record};
 
-const CALLBACK: &str = "/callback";
-const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(180);
 /// Refresh a token this long before it expires.
 const EXPIRY_MARGIN: u64 = 60;
 
@@ -63,11 +61,7 @@ pub struct Grant {
 
 /// Finds the authorization server for a protected MCP server. `metadata` is
 /// the `resource_metadata` address from the server's 401, when it sent one.
-pub fn discover(
-    http: &Client,
-    server: &str,
-    metadata: Option<&str>,
-) -> Result<(Endpoints, Vec<String>)> {
+pub fn discover(http: &Client, server: &str, metadata: Option<&str>) -> Result<Endpoints> {
     let metadata = match metadata {
         Some(metadata) => metadata.to_owned(),
         None => well_known(server, "oauth-protected-resource")?,
@@ -76,13 +70,7 @@ pub fn discover(
     let issuer = resource["authorization_servers"][0]
         .as_str()
         .ok_or("The server did not say where to sign in.")?;
-    let scopes = resource["scopes_supported"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|scope| scope.as_str().map(str::to_owned))
-        .collect();
-    Ok((authorization_server(http, issuer)?, scopes))
+    authorization_server(http, issuer)
 }
 
 /// Reads authorization server metadata, trying the RFC 8414 and OpenID
@@ -135,8 +123,8 @@ fn well_known(address: &str, name: &str) -> Result<String> {
 /// Runs the browser sign-in and returns the grant. Blocks until the browser
 /// returns or the sign-in times out.
 pub fn sign_in(http: &Client, request: SignIn) -> Result<Grant> {
-    let listener = Server::http("127.0.0.1:0")?;
-    let redirect = format!("http://{}{CALLBACK}", listener.server_addr());
+    let callback = Callback::listen("/callback")?;
+    let redirect = callback.redirect.clone();
     let client = match request.client {
         Some(client) => client,
         None => register(http, request.endpoints, &redirect)?,
@@ -163,26 +151,11 @@ pub fn sign_in(http: &Client, request: SignIn) -> Result<Grant> {
             query.append_pair(name, value);
         }
     }
-    open::that_detached(authorize.as_str())
-        .map_err(|_| "Context could not open the sign-in page in your browser.")?;
-
-    let deadline = Instant::now() + SIGN_IN_TIMEOUT;
-    let base = Url::parse(&redirect)?;
-    while let Some(incoming) =
-        listener.recv_timeout(deadline.saturating_duration_since(Instant::now()))?
-    {
-        let callback = base.join(incoming.url())?;
-        let matches = incoming.method() == &Method::Get
-            && callback.path() == CALLBACK
-            && parameter(&callback, "state").as_deref() == Some(state.secret().as_str());
-        if !matches {
-            let _ = incoming.respond(
-                Response::from_string("This request does not match the Context sign-in.")
-                    .with_status_code(400),
-            );
-            continue;
-        }
-        let outcome = match parameter(&callback, "code") {
+    callback.wait(
+        &authorize,
+        state.secret(),
+        request.name,
+        |url| match parameter(url, "code") {
             Some(code) => exchange(
                 http,
                 &request.endpoints.token,
@@ -196,20 +169,8 @@ pub fn sign_in(http: &Client, request: SignIn) -> Result<Grant> {
                 request.resource,
             ),
             None => Err(format!("{} sign-in was cancelled or declined.", request.name).into()),
-        };
-        let page = match &outcome {
-            Ok(_) => format!(
-                "{} is connected to Context. You can close this tab.",
-                request.name
-            ),
-            Err(_) => {
-                "Context could not finish signing in. Check the Context window for details.".into()
-            }
-        };
-        let _ = incoming.respond(browser_page(&page, outcome.is_ok()));
-        return outcome;
-    }
-    Err("Sign-in timed out. Try again from Context.".into())
+        },
+    )
 }
 
 /// GitHub's device flow needs only a public client ID, never a client secret.
@@ -438,28 +399,4 @@ fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |time| time.as_secs())
-}
-
-fn parameter(url: &Url, name: &str) -> Option<String> {
-    url.query_pairs()
-        .find(|(key, _)| key == name)
-        .map(|(_, value)| value.into_owned())
-        .filter(|value| !value.is_empty())
-}
-
-/// A small page for the browser tab that finished sign-in.
-fn browser_page(message: &str, connected: bool) -> Response<std::io::Cursor<Vec<u8>>> {
-    let mark = if connected { "&#10003;" } else { "!" };
-    let message = message.replace('&', "&amp;").replace('<', "&lt;");
-    let html = format!(
-        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>\
-         <title>Context</title><style>body{{font:16px system-ui,sans-serif;display:grid;\
-         place-items:center;min-height:90vh;margin:0;background:#f6f7f9;color:#15181d}}\
-         @media(prefers-color-scheme:dark){{body{{background:#111317;color:#eceff4}}}}\
-         div{{text-align:center;max-width:26rem;padding:1rem}}b{{display:block;font-size:2rem;\
-         margin-bottom:.5rem;color:#5b74f0}}</style><div><b>{mark}</b>{message}</div>"
-    );
-    let header = Header::from_bytes("Content-Type", "text/html; charset=utf-8")
-        .expect("static header is valid");
-    Response::from_data(html.into_bytes()).with_header(header)
 }

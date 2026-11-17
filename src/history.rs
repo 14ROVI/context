@@ -73,46 +73,6 @@ pub struct Entry {
     /// Whether the capture was saved as `Record::Screenshot(id)`.
     #[serde(default)]
     pub has_screenshot: bool,
-    /// Questions the user asked about this result, oldest first.
-    #[serde(default)]
-    pub follow_ups: Vec<FollowUp>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct FollowUp {
-    pub question: String,
-    pub answer: String,
-    #[serde(default)]
-    pub sources: Vec<String>,
-}
-
-impl Entry {
-    /// The answer and earlier follow-ups as plain text, for a new follow-up.
-    pub fn conversation(&self) -> String {
-        let mut parts = vec![
-            [&self.text.headline, &self.text.summary, &self.text.details]
-                .into_iter()
-                .filter(|part| !part.is_empty())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(
-                    "
-",
-                ),
-        ];
-        for follow_up in &self.follow_ups {
-            parts.push(format!(
-                "User: {}
-Context: {}",
-                follow_up.question, follow_up.answer
-            ));
-        }
-        parts.join(
-            "
-
-",
-        )
-    }
 }
 
 pub struct History {
@@ -165,22 +125,10 @@ impl History {
             text,
             sources,
             has_screenshot,
-            follow_ups: Vec::new(),
         };
         self.entries.insert(0, entry.clone());
         self.persist();
         entry
-    }
-
-    pub fn get(&self, id: Uuid) -> Option<&Entry> {
-        self.entries.iter().find(|entry| entry.id == id)
-    }
-
-    pub fn add_follow_up(&mut self, id: Uuid, follow_up: FollowUp) {
-        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == id) {
-            entry.follow_ups.push(follow_up);
-            self.persist();
-        }
     }
 
     /// Deletes results older than `days`. 0 keeps them forever.
@@ -200,15 +148,6 @@ impl History {
             .partition(|entry| entry.created_at < cutoff);
         self.entries = kept;
         forget_screenshots(&old);
-        self.persist();
-    }
-
-    pub fn remove(&mut self, id: Uuid) {
-        let (removed, kept) = std::mem::take(&mut self.entries)
-            .into_iter()
-            .partition(|entry| entry.id == id);
-        self.entries = kept;
-        forget_screenshots(&removed);
         self.persist();
     }
 

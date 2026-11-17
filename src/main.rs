@@ -2,6 +2,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app;
+mod callback;
 mod capture;
 mod history;
 mod model;
@@ -20,8 +21,8 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 fn log_mcp_transport() {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
-    let filter =
-        tracing_subscriber::filter::Targets::new().with_target("rmcp", tracing::Level::DEBUG);
+    let filter = tracing_subscriber::filter::Targets::new()
+        .with_target("rmcp", tracing_subscriber::filter::LevelFilter::DEBUG);
     let _ = tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()

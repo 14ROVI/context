@@ -4,8 +4,6 @@
 
 use std::sync::Arc;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use tauri::{AppHandle, State, Wry, ipc::Invoke};
 use uuid::Uuid;
 
@@ -23,7 +21,6 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         capture,
         sign_in,
         sign_out,
-        delete_entry,
         clear_history,
         edit_sources,
         reload_sources,
@@ -35,7 +32,6 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         card_close,
         open_settings,
         open_usage,
-        ask_follow_up,
         save_settings,
         set_api_key,
         list_models,
@@ -44,7 +40,6 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         add_source,
         remove_source,
         search_catalog,
-        quit,
     ]
 }
 
@@ -70,7 +65,7 @@ async fn get_screenshot(shared: State<'_, SharedState>, id: Uuid) -> Result<Opti
     });
     Ok(entry
         .and_then(|entry| history::screenshot(&entry))
-        .map(|jpeg| format!("data:image/jpeg;base64,{}", STANDARD.encode(jpeg))))
+        .map(|jpeg| crate::model::data_url(&jpeg)))
 }
 
 #[tauri::command]
@@ -86,11 +81,6 @@ fn sign_in(shared: State<'_, SharedState>) {
 #[tauri::command]
 fn sign_out(shared: State<'_, SharedState>) {
     shared.send(Command::SignOut);
-}
-
-#[tauri::command]
-fn delete_entry(shared: State<'_, SharedState>, id: Uuid) {
-    shared.send(Command::Delete(id));
 }
 
 #[tauri::command]
@@ -141,11 +131,6 @@ fn card_close(app: AppHandle, shared: State<'_, SharedState>) {
     card::close(&app, &shared);
 }
 
-#[tauri::command]
-fn quit(shared: State<'_, SharedState>) {
-    shared.send(Command::Quit);
-}
-
 /// Opens Settings in the main window, optionally searching sources for `search`.
 #[tauri::command]
 fn open_settings(shared: State<'_, SharedState>, search: Option<String>) {
@@ -158,11 +143,6 @@ fn open_settings(shared: State<'_, SharedState>, search: Option<String>) {
 fn open_usage(shared: State<'_, SharedState>) -> Result<(), String> {
     let url = card::usage_url(&shared).ok_or("There is no usage page to open.")?;
     open::that_detached(url).map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn ask_follow_up(shared: State<'_, SharedState>, id: Uuid, question: String) {
-    shared.send(Command::FollowUp(id, question));
 }
 
 #[tauri::command]

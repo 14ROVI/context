@@ -202,7 +202,7 @@ function renderMain() {
     shownKey = key;
     // Keep the scroll position while settings change underneath.
     const scroll = main.querySelector(".page")?.scrollTop ?? 0;
-    const page = h("div", { class: "page" }, renderSettings(state, sourcesSettings()));
+    const page = h("div", { class: "page" }, renderSettings(state, renderSources(state, sourceSearch)));
     main.replaceChildren(...[banner(), page].filter(Boolean));
     page.scrollTop = scroll;
     return;
@@ -213,7 +213,7 @@ function renderMain() {
     state.historyProblem,
     entry ?? null,
     entry ? screenshots.has(entry.id) : false,
-    entry ? null : [state.account, state.shortcut],
+    entry ? null : [state.account, state.shortcut, state.settings.provider, state.apiKeys],
   ]);
   if (key === shownKey) return;
   shownKey = key;
@@ -261,11 +261,6 @@ function detail(entry) {
   );
 }
 
-/** The Sources section of Settings. */
-function sourcesSettings() {
-  return renderSources(state, sourceSearch);
-}
-
 async function loadScreenshot(id) {
   const url = await invoke("get_screenshot", { id });
   if (url) {
@@ -275,12 +270,22 @@ async function loadScreenshot(id) {
 }
 
 function welcome() {
-  const { account, shortcut } = state;
-  const signedIn = account.state === "signedIn";
+  const { account, shortcut, settings, apiKeys } = state;
+  const provider = settings.provider;
+  const ready = provider === "chatGpt" ? account.state === "signedIn" : apiKeys[provider];
+  let setup;
   let connect;
-  if (signedIn) connect = h("span", { class: "done" }, "✓ ChatGPT connected");
-  else if (account.state === "connecting") connect = h("span", { class: "note" }, "Waiting for your browser…");
-  else connect = button("Connect ChatGPT", "primary", () => invoke("sign_in"));
+  if (provider === "chatGpt") {
+    setup = "Connect your ChatGPT plan";
+    if (ready) connect = h("span", { class: "done" }, "✓ ChatGPT connected");
+    else if (account.state === "connecting") connect = h("span", { class: "note" }, "Waiting for your browser…");
+    else connect = button("Connect ChatGPT", "primary", () => invoke("sign_in"));
+  } else {
+    setup = `Add your ${provider === "openAi" ? "OpenAI" : "Anthropic"} API key`;
+    connect = ready
+      ? h("span", { class: "done" }, "✓ API key saved")
+      : button("Open settings", "primary", () => openSettings(null));
+  }
   let press;
   if (shortcut.kind === "registered") press = keys(shortcut.keys);
   else if (shortcut.kind === "external") press = h("span", { class: "note" }, "Add a desktop shortcut that runs “context capture”.");
@@ -293,7 +298,7 @@ function welcome() {
     h(
       "div",
       {},
-      h("h1", {}, signedIn ? "Ready when you are" : "Answers for what's on your screen"),
+      h("h1", {}, ready ? "Ready when you are" : "Answers for what's on your screen"),
       h(
         "p",
         { class: "lead" },
@@ -303,7 +308,7 @@ function welcome() {
     h(
       "div",
       { class: "steps" },
-      h("div", { class: "step" }, h("span", { class: "number" }, "1"), h("span", { class: "label" }, "Connect your ChatGPT plan"), connect),
+      h("div", { class: "step" }, h("span", { class: "number" }, "1"), h("span", { class: "label" }, setup), connect),
       h("div", { class: "step" }, h("span", { class: "number" }, "2"), h("span", { class: "label" }, "Press the shortcut in any app"), press),
     ),
     h(

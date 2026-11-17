@@ -818,7 +818,6 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "tokio",
- "tracing",
  "tracing-subscriber",
  "url",
  "uuid",

@@ -24,7 +24,7 @@ use crate::history::{ContextText, Entry, History};
 use crate::model::{Answer, Assistant, Fix, NeedsAction};
 use crate::settings::{Provider, Settings};
 use crate::sources::catalog::{self, Entry as CatalogEntry};
-use crate::sources::{self, Sources};
+use crate::sources::{self, SourceStatus, Sources};
 
 pub use card::CardView;
 use worker::{Job, Report};
@@ -59,9 +59,7 @@ pub enum Command {
     Capture,
     SignIn,
     SignOut,
-    Delete(Uuid),
     ClearHistory,
-    FollowUp(Uuid, String),
     SaveSettings(Settings),
     SetApiKey(Provider, Option<String>),
     ListModels(Provider),
@@ -155,8 +153,6 @@ pub struct Snapshot {
     /// Which providers have an API key saved. The keys themselves never leave Rust.
     api_keys: ApiKeys,
     models: ModelsView,
-    /// The entry whose follow-up question is being answered.
-    asking: Option<Uuid>,
     catalog: CatalogView,
     /// The app automatic cards are watching.
     watching: Option<String>,
@@ -200,20 +196,8 @@ pub enum ShortcutView {
 #[serde(rename_all = "camelCase")]
 struct SourcesView {
     connecting: bool,
-    servers: Vec<SourceView>,
+    servers: Vec<SourceStatus>,
     problem: Option<String>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SourceView {
-    name: String,
-    enabled: usize,
-    hidden: usize,
-    problem: Option<String>,
-    needs_sign_in: bool,
-    signed_in: bool,
-    builtin: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -290,7 +274,6 @@ pub fn run(first: Launch) -> Result<()> {
             ..Default::default()
         },
         settings: settings.clone(),
-        asking: None,
         catalog: CatalogView {
             featured: catalog::featured(),
             ..Default::default()
@@ -449,15 +432,10 @@ impl Controller {
                     self.publish();
                 }
             }
-            Command::Delete(id) => {
-                self.history.remove(id);
-                self.publish();
-            }
             Command::ClearHistory => {
                 self.history.clear();
                 self.publish();
             }
-            Command::FollowUp(id, question) => self.follow_up(id, question),
             Command::SaveSettings(settings) => self.save_settings(settings),
             Command::SetApiKey(provider, key) => {
                 self.submit(Job::SetApiKey(provider, key));
@@ -587,33 +565,10 @@ impl Controller {
                 self.finish_analysis(focus, quiet, result, screenshot);
                 self.publish();
             }
-            Report::FollowUp { id, result } => {
-                match result {
-                    Ok(follow_up) => self.history.add_follow_up(id, follow_up),
-                    Err(problem) => {
-                        if problem.sign_in() {
-                            self.account = Account::SignedOut;
-                        }
-                        self.notify(problem.message, true);
-                    }
-                }
-                self.update(|snapshot| snapshot.asking = None);
-            }
             Report::Sources(servers, problem) => self.update(|snapshot| {
                 snapshot.sources = SourcesView {
                     connecting: false,
-                    servers: servers
-                        .into_iter()
-                        .map(|server| SourceView {
-                            name: server.name,
-                            enabled: server.enabled,
-                            hidden: server.hidden,
-                            problem: server.problem,
-                            needs_sign_in: server.needs_sign_in,
-                            signed_in: server.signed_in,
-                            builtin: server.builtin,
-                        })
-                        .collect(),
+                    servers,
                     problem,
                 };
             }),
@@ -811,19 +766,6 @@ impl Controller {
             return;
         }
         self.submit(Job::AutoCandidate(text));
-    }
-
-    fn follow_up(&mut self, id: Uuid, question: String) {
-        let question = question.trim().to_owned();
-        let Some(entry) = self.history.get(id).cloned() else {
-            return;
-        };
-        if question.is_empty() {
-            return;
-        }
-        if self.submit(Job::FollowUp { entry, question }) {
-            self.update(|snapshot| snapshot.asking = Some(id));
-        }
     }
 
     fn save_settings(&mut self, mut next: Settings) {
