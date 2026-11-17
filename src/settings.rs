@@ -34,8 +34,7 @@ pub struct Settings {
     pub start_at_login: bool,
     /// Keep the screenshot behind each saved result.
     pub save_screenshots: bool,
-    /// Delete results older than this many days. 0 keeps them until the
-    /// history limit pushes them out.
+    /// Delete results older than this many days. 0 keeps them forever.
     pub history_days: u32,
     /// Apps Context never captures, matched against the focused app's name.
     pub excluded_apps: Vec<String>,

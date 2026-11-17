@@ -7,8 +7,6 @@ use uuid::Uuid;
 
 use crate::storage::{self, Record};
 
-const MAX_ENTRIES: usize = 100;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ContextText {
     pub headline: String,
@@ -129,8 +127,7 @@ impl History {
     pub fn load() -> Self {
         match storage::load::<Vec<Entry>>(Record::History) {
             Ok(entries) => {
-                let mut entries = entries.unwrap_or_default();
-                entries.truncate(MAX_ENTRIES);
+                let entries = entries.unwrap_or_default();
                 Self {
                     entries,
                     problem: None,
@@ -171,10 +168,6 @@ impl History {
             follow_ups: Vec::new(),
         };
         self.entries.insert(0, entry.clone());
-        if self.entries.len() > MAX_ENTRIES {
-            let dropped: Vec<Entry> = self.entries.drain(MAX_ENTRIES..).collect();
-            forget_screenshots(&dropped);
-        }
         self.persist();
         entry
     }
@@ -190,7 +183,7 @@ impl History {
         }
     }
 
-    /// Deletes results older than `days`. 0 keeps everything.
+    /// Deletes results older than `days`. 0 keeps them forever.
     pub fn prune(&mut self, days: u32) {
         if days == 0 {
             return;

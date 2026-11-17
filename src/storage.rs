@@ -68,6 +68,8 @@ impl Record {
     fn max_bytes(self) -> u64 {
         match self {
             Record::Screenshot(_) => 8 * 1024 * 1024,
+            // History kept forever grows; its text is a few KB per result.
+            Record::History => 64 * 1024 * 1024,
             _ => 512 * 1024,
         }
     }

@@ -12,7 +12,7 @@ const PROVIDERS = [
 const SHORTCUTS = ["Ctrl+Alt+Space", "Ctrl+Alt+Shift+Space", "Ctrl+Shift+Space", "Alt+Shift+C"];
 
 const RETENTION = [
-  [0, "Until the latest 100 results"],
+  [0, "Forever"],
   [1, "1 day"],
   [7, "7 days"],
   [30, "30 days"],
@@ -241,6 +241,7 @@ function privacySection(state) {
     ),
     h("div", { class: "label" }, "Keep history for"),
     h("div", { class: "row" }, retention),
+    h("p", { class: "note" }, "Each saved screenshot takes about 200 KB. Delete results or clear history at any time."),
     h("div", { class: "label" }, "Never capture these apps"),
     excluded,
     h("p", { class: "note" }, "Context drops the capture before anything leaves your computer. Names match partially and ignore case."),

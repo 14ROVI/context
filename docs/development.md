@@ -51,7 +51,7 @@ The **Capture screen** button hides Context and captures the app behind it. On W
 
 Closing the window hides it, and Context keeps running in the tray. Click the tray icon to bring it back. Quit from the window or tray. When a plan or API usage limit is reached, the card links to the usage page.
 
-History keeps the latest 100 results in your local app-data folder. Records are encrypted with a key stored in your system credential store. Results show the app that was in focus when the desktop reports it. Each result keeps the screenshot it came from, encrypted in a `screenshots` subfolder. You can copy or delete a result, or clear all history. Deleting a result deletes its screenshot.
+History keeps results forever by default, in your local app-data folder. In Settings you can keep them for 1, 7, 30 or 90 days instead. Records are encrypted with a key stored in your system credential store. Results show the app that was in focus when the desktop reports it. Each result keeps the screenshot it came from, encrypted in a `screenshots` subfolder. You can copy or delete a result, or clear all history. Deleting a result deletes its screenshot.
 
 ## Settings
 
@@ -61,7 +61,7 @@ Open **Settings** at the bottom of the sidebar. Changes save right away to `sett
 | --- | --- |
 | Model | A ChatGPT plan, an OpenAI API key, or an Anthropic API key for Claude. API keys are encrypted like the account and never shown again. Pick a model, or keep the default: Context picks a vision model on a plan, and Claude Opus 5.5 on Anthropic. |
 | Shortcut | Pick a preset or type one such as `Ctrl+Shift+K`. If it is taken, Context falls back to a default and says so. |
-| Privacy | Keep or skip screenshots with results, how long to keep history, and apps Context never captures. An excluded app's capture is dropped before anything is sent. |
+| Privacy | Keep or skip screenshots with results, how long to keep history (forever by default), and apps Context never captures. An excluded app's capture is dropped before anything is sent. |
 | Automatic cards | Experimental. Context notices new text in the focused window, such as a friend's question in a chat, and shows a card only when it can help. See [How automatic cards decide](architecture.md#automatic-cards). |
 | Startup | Start Context when you sign in. |
 
