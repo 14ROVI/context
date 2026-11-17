@@ -36,6 +36,18 @@ pub enum Record {
     Screenshot(Uuid),
     OpenAiKey,
     AnthropicKey,
+    /// The OAuth grant for one source, keyed by [`key`].
+    SourceGrant(u64),
+    /// A secret setting for one source, keyed by [`key`].
+    SourceSecret(u64),
+}
+
+/// A stable key for a record named by text, such as a source's address.
+pub fn key(text: &str) -> u64 {
+    let digest = ring::digest::digest(&ring::digest::SHA256, text.as_bytes());
+    let mut bytes = [0; 8];
+    bytes.copy_from_slice(&digest.as_ref()[..8]);
+    u64::from_be_bytes(bytes)
 }
 
 impl Record {
@@ -48,6 +60,8 @@ impl Record {
             Record::Screenshot(id) => format!("{SCREENSHOTS}/{}.ctx", id.simple()),
             Record::OpenAiKey => "openai-key.ctx".into(),
             Record::AnthropicKey => "anthropic-key.ctx".into(),
+            Record::SourceGrant(key) => format!("sources/grant-{key:016x}.ctx"),
+            Record::SourceSecret(key) => format!("sources/secret-{key:016x}.ctx"),
         }
     }
 

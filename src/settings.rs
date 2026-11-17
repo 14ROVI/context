@@ -41,6 +41,8 @@ pub struct Settings {
     pub excluded_apps: Vec<String>,
     /// Experimental: watch the screen and offer cards without the shortcut.
     pub auto_cards: bool,
+    /// Connectors built into Context that the user added, such as `google-calendar`.
+    pub connectors: Vec<String>,
 }
 
 impl Default for Settings {
@@ -54,6 +56,7 @@ impl Default for Settings {
             history_days: 0,
             excluded_apps: Vec::new(),
             auto_cards: false,
+            connectors: Vec::new(),
         }
     }
 }

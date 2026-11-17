@@ -39,6 +39,11 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         save_settings,
         set_api_key,
         list_models,
+        source_sign_in,
+        source_sign_out,
+        add_source,
+        remove_source,
+        search_catalog,
         quit,
     ]
 }
@@ -175,4 +180,34 @@ fn set_api_key(shared: State<'_, SharedState>, provider: Provider, key: Option<S
 #[tauri::command]
 fn list_models(shared: State<'_, SharedState>, provider: Provider) {
     shared.send(Command::ListModels(provider));
+}
+
+#[tauri::command]
+fn source_sign_in(shared: State<'_, SharedState>, name: String) {
+    shared.send(Command::SourceSignIn(name));
+}
+
+#[tauri::command]
+fn source_sign_out(shared: State<'_, SharedState>, name: String) {
+    shared.send(Command::SourceSignOut(name));
+}
+
+/// Adds a catalog entry. Secret values go to encrypted storage, not mcp.json.
+#[tauri::command]
+fn add_source(
+    shared: State<'_, SharedState>,
+    entry: crate::sources::catalog::Entry,
+    values: serde_json::Map<String, serde_json::Value>,
+) {
+    shared.send(Command::AddSource(Box::new(entry), values));
+}
+
+#[tauri::command]
+fn remove_source(shared: State<'_, SharedState>, name: String) {
+    shared.send(Command::RemoveSource(name));
+}
+
+#[tauri::command]
+fn search_catalog(shared: State<'_, SharedState>, query: String) {
+    shared.send(Command::SearchCatalog(query));
 }

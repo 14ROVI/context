@@ -33,7 +33,8 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 | [`src/model/openai.rs`](../src/model/openai.rs) | The Responses API for a ChatGPT plan or an OpenAI API key, with the tool-calling loop. |
 | [`src/model/anthropic.rs`](../src/model/anthropic.rs) | The Anthropic Messages API for Claude, with the tool-use loop, over raw HTTP since Rust has no official SDK. |
 | [`src/settings.rs`](../src/settings.rs) | `settings.json`: provider, model, shortcut, privacy, automatic cards and startup. |
-| [`src/sources.rs`](../src/sources.rs) | `mcp.json`, MCP connections (stdio and HTTP), the tool policy and tool calls. |
+| [`src/sources/`](../src/sources) | Sources: MCP servers and built-in connectors, OAuth sign-in, the catalog and the tool policy. See [Sources](sources.md#while-context-answers). |
+| [`ui/sources.js`](../ui/sources.js) | The Sources section of Settings. |
 | [`src/history.rs`](../src/history.rs) | Entry format, text limits, retention and screenshots. |
 | [`src/storage.rs`](../src/storage.rs) | Data folder and encrypted records. |
 
@@ -54,7 +55,7 @@ Context relies on cross-platform crates and does not branch on the target OS. Ea
 | Secrets | `keyring` + `ring` | An AES-256-GCM key in Credential Manager, the Keychain or the Secret Service. |
 | Sources | `rmcp` + `which` | MCP clients over stdio or streamable HTTP. `which` resolves launchers such as `npx.cmd`. |
 
-The one exception is in [`sources.rs`](../src/sources.rs), which starts MCP servers with `CREATE_NO_WINDOW` on Windows. Release builds have no console, so a console server would otherwise open a window of its own.
+The one exception is in [`sources/mcp.rs`](../src/sources/mcp.rs), which starts MCP servers with `CREATE_NO_WINDOW` on Windows. Release builds have no console, so a console server would otherwise open a window of its own.
 
 ## Threads and state
 

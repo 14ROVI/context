@@ -1,0 +1,366 @@
+//! OAuth sign-in for sources: MCP authorization (discovery, dynamic client
+//! registration, PKCE) and built-in connectors such as Google Calendar. The
+//! browser opens on the provider's page and returns to a one-time listener on
+//! 127.0.0.1. Grants are stored encrypted, one record per source.
+
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use openidconnect::{CsrfToken, PkceCodeChallenge};
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tiny_http::{Header, Method, Response, Server};
+use url::Url;
+
+use crate::Result;
+use crate::storage::{self, Record};
+
+const CALLBACK: &str = "/callback";
+const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(180);
+/// Refresh a token this long before it expires.
+const EXPIRY_MARGIN: u64 = 60;
+
+/// Where a provider signs people in and hands out tokens.
+#[derive(Clone, Debug)]
+pub struct Endpoints {
+    pub issuer: String,
+    pub authorization: String,
+    pub token: String,
+    pub registration: Option<String>,
+}
+
+/// An OAuth client. Desktop clients cannot keep a secret, so a secret here is
+/// one the provider requires anyway, as Google and GitHub do.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClientId {
+    pub id: String,
+    pub secret: Option<String>,
+}
+
+/// What a source signs in with: the client, scopes and extra parameters.
+pub struct SignIn<'a> {
+    pub endpoints: &'a Endpoints,
+    /// `None` registers a client with the provider first.
+    pub client: Option<ClientId>,
+    pub scopes: Option<&'a str>,
+    /// The protected resource, sent as RFC 8707 `resource`.
+    pub resource: Option<&'a str>,
+    pub extra: &'a [(&'a str, &'a str)],
+    /// Shown in the browser tab when sign-in finishes, such as "GitHub".
+    pub name: &'a str,
+}
+
+/// A stored sign-in.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Grant {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: Option<u64>,
+    pub token_endpoint: String,
+    pub client: ClientId,
+    pub resource: Option<String>,
+}
+
+/// Finds the authorization server for a protected MCP server. `metadata` is
+/// the `resource_metadata` address from the server's 401, when it sent one.
+pub fn discover(
+    http: &Client,
+    server: &str,
+    metadata: Option<&str>,
+) -> Result<(Endpoints, Vec<String>)> {
+    let metadata = match metadata {
+        Some(metadata) => metadata.to_owned(),
+        None => well_known(server, "oauth-protected-resource")?,
+    };
+    let resource: Value = http.get(&metadata).send()?.error_for_status()?.json()?;
+    let issuer = resource["authorization_servers"][0]
+        .as_str()
+        .ok_or("The server did not say where to sign in.")?;
+    let scopes = resource["scopes_supported"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|scope| scope.as_str().map(str::to_owned))
+        .collect();
+    Ok((authorization_server(http, issuer)?, scopes))
+}
+
+/// Reads authorization server metadata, trying the RFC 8414 and OpenID
+/// locations in the order the MCP specification gives.
+pub fn authorization_server(http: &Client, issuer: &str) -> Result<Endpoints> {
+    let candidates = [
+        well_known(issuer, "oauth-authorization-server")?,
+        well_known(issuer, "openid-configuration")?,
+        format!(
+            "{}/.well-known/openid-configuration",
+            issuer.trim_end_matches('/')
+        ),
+    ];
+    for candidate in candidates {
+        let Ok(response) = http.get(&candidate).send() else {
+            continue;
+        };
+        if !response.status().is_success() {
+            continue;
+        }
+        let Ok(meta) = response.json::<Value>() else {
+            continue;
+        };
+        let (Some(authorization), Some(token)) = (
+            meta["authorization_endpoint"].as_str(),
+            meta["token_endpoint"].as_str(),
+        ) else {
+            continue;
+        };
+        return Ok(Endpoints {
+            issuer: meta["issuer"].as_str().unwrap_or(issuer).to_owned(),
+            authorization: authorization.to_owned(),
+            token: token.to_owned(),
+            registration: meta["registration_endpoint"].as_str().map(str::to_owned),
+        });
+    }
+    Err("Context could not find where this source signs in.".into())
+}
+
+/// `https://host/.well-known/{name}{path}`, the path-inserted form.
+fn well_known(address: &str, name: &str) -> Result<String> {
+    let url = Url::parse(address)?;
+    let path = url.path().trim_end_matches('/');
+    Ok(format!(
+        "{}/.well-known/{name}{path}",
+        url.origin().ascii_serialization()
+    ))
+}
+
+/// Runs the browser sign-in and returns the grant. Blocks until the browser
+/// returns or the sign-in times out.
+pub fn sign_in(http: &Client, request: SignIn) -> Result<Grant> {
+    let listener = Server::http("127.0.0.1:0")?;
+    let redirect = format!("http://{}{CALLBACK}", listener.server_addr());
+    let client = match request.client {
+        Some(client) => client,
+        None => register(http, request.endpoints, &redirect)?,
+    };
+    let state = CsrfToken::new_random();
+    let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
+    let mut authorize = Url::parse(&request.endpoints.authorization)?;
+    {
+        let mut query = authorize.query_pairs_mut();
+        query
+            .append_pair("response_type", "code")
+            .append_pair("client_id", &client.id)
+            .append_pair("redirect_uri", &redirect)
+            .append_pair("state", state.secret())
+            .append_pair("code_challenge", challenge.as_str())
+            .append_pair("code_challenge_method", "S256");
+        if let Some(scopes) = request.scopes {
+            query.append_pair("scope", scopes);
+        }
+        if let Some(resource) = request.resource {
+            query.append_pair("resource", resource);
+        }
+        for (name, value) in request.extra {
+            query.append_pair(name, value);
+        }
+    }
+    open::that_detached(authorize.as_str())
+        .map_err(|_| "Context could not open the sign-in page in your browser.")?;
+
+    let deadline = Instant::now() + SIGN_IN_TIMEOUT;
+    let base = Url::parse(&redirect)?;
+    while let Some(incoming) =
+        listener.recv_timeout(deadline.saturating_duration_since(Instant::now()))?
+    {
+        let callback = base.join(incoming.url())?;
+        let matches = incoming.method() == &Method::Get
+            && callback.path() == CALLBACK
+            && parameter(&callback, "state").as_deref() == Some(state.secret().as_str());
+        if !matches {
+            let _ = incoming.respond(
+                Response::from_string("This request does not match the Context sign-in.")
+                    .with_status_code(400),
+            );
+            continue;
+        }
+        let outcome = match parameter(&callback, "code") {
+            Some(code) => exchange(
+                http,
+                &request.endpoints.token,
+                &client,
+                &[
+                    ("grant_type", "authorization_code"),
+                    ("code", &code),
+                    ("redirect_uri", &redirect),
+                    ("code_verifier", verifier.secret()),
+                ],
+                request.resource,
+            ),
+            None => Err(format!("{} sign-in was cancelled or declined.", request.name).into()),
+        };
+        let page = match &outcome {
+            Ok(_) => format!(
+                "{} is connected to Context. You can close this tab.",
+                request.name
+            ),
+            Err(_) => {
+                "Context could not finish signing in. Check the Context window for details.".into()
+            }
+        };
+        let _ = incoming.respond(browser_page(&page, outcome.is_ok()));
+        return outcome;
+    }
+    Err("Sign-in timed out. Try again from Context.".into())
+}
+
+/// Registers Context as a client with the authorization server (RFC 7591).
+fn register(http: &Client, endpoints: &Endpoints, redirect: &str) -> Result<ClientId> {
+    let endpoint = endpoints.registration.as_deref().ok_or(
+        "This source needs an app registered with it before Context can sign in. Add its client ID under `oauth` in mcp.json.",
+    )?;
+    let response = http
+        .post(endpoint)
+        .json(&json!({
+            "client_name": "Context",
+            "redirect_uris": [redirect],
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "none",
+        }))
+        .send()?;
+    let status = response.status();
+    let body: Value = response.json().unwrap_or_default();
+    if !status.is_success() {
+        crate::debug(format_args!(
+            "client registration failed ({status}): {body}"
+        ));
+        return Err("The source refused to register Context as a client.".into());
+    }
+    Ok(ClientId {
+        id: body["client_id"]
+            .as_str()
+            .ok_or("The source did not return a client ID.")?
+            .to_owned(),
+        secret: body["client_secret"].as_str().map(str::to_owned),
+    })
+}
+
+fn exchange(
+    http: &Client,
+    token_endpoint: &str,
+    client: &ClientId,
+    form: &[(&str, &str)],
+    resource: Option<&str>,
+) -> Result<Grant> {
+    let mut fields: Vec<(&str, &str)> = form.to_vec();
+    fields.push(("client_id", &client.id));
+    if let Some(secret) = &client.secret {
+        fields.push(("client_secret", secret));
+    }
+    if let Some(resource) = resource {
+        fields.push(("resource", resource));
+    }
+    let response = http
+        .post(token_endpoint)
+        .header("Accept", "application/json")
+        .form(&fields)
+        .send()?;
+    let status = response.status();
+    let body: Value = response.json().unwrap_or_default();
+    if !status.is_success() || body.get("error").is_some() {
+        crate::debug(format_args!(
+            "token request failed ({status}): {}",
+            body["error"].as_str().unwrap_or_default()
+        ));
+        return Err("The source did not accept the sign-in. Try signing in again.".into());
+    }
+    let access_token = body["access_token"]
+        .as_str()
+        .ok_or("The source did not return an access token.")?
+        .to_owned();
+    Ok(Grant {
+        access_token,
+        refresh_token: body["refresh_token"].as_str().map(str::to_owned),
+        expires_at: body["expires_in"].as_u64().map(|seconds| now() + seconds),
+        token_endpoint: token_endpoint.to_owned(),
+        client: client.clone(),
+        resource: resource.map(str::to_owned),
+    })
+}
+
+/// A current access token for the source stored under `key`, refreshed when
+/// it is about to expire. `Ok(None)` when the source has never signed in.
+pub fn access_token(http: &Client, key: &str) -> Result<Option<String>> {
+    let record = Record::SourceGrant(storage::key(key));
+    let Some(mut grant) = storage::load::<Grant>(record)? else {
+        return Ok(None);
+    };
+    let expiring = grant
+        .expires_at
+        .is_some_and(|expires| expires <= now() + EXPIRY_MARGIN);
+    if expiring {
+        let refresh_token = grant
+            .refresh_token
+            .clone()
+            .ok_or("This source's sign-in expired. Sign in again.")?;
+        let mut refreshed = exchange(
+            http,
+            &grant.token_endpoint,
+            &grant.client,
+            &[
+                ("grant_type", "refresh_token"),
+                ("refresh_token", &refresh_token),
+            ],
+            grant.resource.as_deref(),
+        )?;
+        // Some providers return the refresh token only once.
+        refreshed.refresh_token = refreshed.refresh_token.or(grant.refresh_token);
+        grant = refreshed;
+        storage::save(record, &grant)?;
+    }
+    Ok(Some(grant.access_token))
+}
+
+pub fn save(key: &str, grant: &Grant) -> Result<()> {
+    storage::save(Record::SourceGrant(storage::key(key)), grant)
+}
+
+pub fn forget(key: &str) -> Result<()> {
+    storage::remove(Record::SourceGrant(storage::key(key)))
+}
+
+pub fn signed_in(key: &str) -> bool {
+    storage::load::<Grant>(Record::SourceGrant(storage::key(key)))
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |time| time.as_secs())
+}
+
+fn parameter(url: &Url, name: &str) -> Option<String> {
+    url.query_pairs()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.into_owned())
+        .filter(|value| !value.is_empty())
+}
+
+/// A small page for the browser tab that finished sign-in.
+fn browser_page(message: &str, connected: bool) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mark = if connected { "&#10003;" } else { "!" };
+    let message = message.replace('&', "&amp;").replace('<', "&lt;");
+    let html = format!(
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>\
+         <title>Context</title><style>body{{font:16px system-ui,sans-serif;display:grid;\
+         place-items:center;min-height:90vh;margin:0;background:#f6f7f9;color:#15181d}}\
+         @media(prefers-color-scheme:dark){{body{{background:#111317;color:#eceff4}}}}\
+         div{{text-align:center;max-width:26rem;padding:1rem}}b{{display:block;font-size:2rem;\
+         margin-bottom:.5rem;color:#5b74f0}}</style><div><b>{mark}</b>{message}</div>"
+    );
+    let header = Header::from_bytes("Content-Type", "text/html; charset=utf-8")
+        .expect("static header is valid");
+    Response::from_data(html.into_bytes()).with_header(header)
+}

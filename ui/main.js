@@ -3,6 +3,7 @@
 
 import { button, dots, h, invoke, keys, listen, logo } from "./dom.js";
 import { renderSettings } from "./settings.js";
+import { renderSources } from "./sources.js";
 
 /** How long a non-error notice stays before it fades. */
 const NOTICE_SECONDS = 8;
@@ -25,6 +26,12 @@ const screenshots = new Map();
 /** What the main area last showed, so it is rebuilt only when that changes. */
 let shownKey = null;
 let noticeTimer = null;
+/** Bumped when a page module needs a redraw without a state change. */
+let rerenders = 0;
+document.addEventListener("context-rerender", () => {
+  rerenders += 1;
+  renderMain();
+});
 
 function setState(next) {
   if (!next) return;
@@ -48,6 +55,7 @@ function openSettings(search) {
   view = "settings";
   sourceSearch = search ?? null;
   render();
+  if (search) requestAnimationFrame(() => document.getElementById("sources")?.scrollIntoView({ block: "start" }));
 }
 
 function render() {
@@ -163,7 +171,10 @@ function sourcesPanel() {
   for (const server of sources.servers) {
     let kind = "";
     let detail;
-    if (server.problem) {
+    if (server.needsSignIn) {
+      kind = "idle";
+      detail = "Needs sign-in. Open Settings to connect.";
+    } else if (server.problem) {
       kind = "error";
       detail = server.problem;
     } else if (server.enabled === 0) {
@@ -237,7 +248,9 @@ function renderMain() {
       state.account,
       state.shortcut,
       state.sources,
+      state.catalog,
       sourceSearch,
+      rerenders,
     ]);
     if (key === shownKey) return;
     shownKey = key;
@@ -356,9 +369,9 @@ function followUps(entry) {
   );
 }
 
-/** Settings sections for sources. Filled in by the sources catalog. */
+/** The Sources section of Settings. */
 function sourcesSettings() {
-  return [];
+  return renderSources(state, sourceSearch);
 }
 
 async function loadScreenshot(id) {

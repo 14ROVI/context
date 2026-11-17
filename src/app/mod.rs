@@ -24,6 +24,7 @@ use crate::capture::Focus;
 use crate::history::{ContextText, Entry, History};
 use crate::model::{Answer, Assistant, Fix, NeedsAction};
 use crate::settings::{Provider, Settings};
+use crate::sources::catalog::{self, Entry as CatalogEntry};
 use crate::sources::{self, Sources};
 
 pub use card::CardView;
@@ -67,6 +68,14 @@ pub enum Command {
     ListModels(Provider),
     EditSources,
     ReloadSources,
+    SourceSignIn(String),
+    SourceSignOut(String),
+    AddSource(
+        Box<CatalogEntry>,
+        serde_json::Map<String, serde_json::Value>,
+    ),
+    RemoveSource(String),
+    SearchCatalog(String),
     DismissNotice(u64),
     Quit,
 }
@@ -144,6 +153,19 @@ pub struct Snapshot {
     models: ModelsView,
     /// The entry whose follow-up question is being answered.
     asking: Option<Uuid>,
+    catalog: CatalogView,
+}
+
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogView {
+    featured: Vec<CatalogEntry>,
+    query: String,
+    searching: bool,
+    results: Option<Vec<CatalogEntry>>,
+    error: Option<String>,
+    /// A source action, such as a sign-in, is running.
+    busy: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -182,6 +204,9 @@ struct SourceView {
     enabled: usize,
     hidden: usize,
     problem: Option<String>,
+    needs_sign_in: bool,
+    signed_in: bool,
+    builtin: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -260,6 +285,10 @@ pub fn run(first: Launch) -> Result<()> {
         },
         settings: settings.clone(),
         asking: None,
+        catalog: CatalogView {
+            featured: catalog::featured(),
+            ..Default::default()
+        },
     };
     let shared = Arc::new(Shared {
         events: events.clone(),
@@ -441,6 +470,57 @@ impl Controller {
                     self.update(|snapshot| snapshot.sources.connecting = true);
                 }
             }
+            Command::SourceSignIn(name) => {
+                if self.submit(Job::SourceSignIn(name.clone())) {
+                    self.notify(
+                        format!("Finish signing in to {name} in your browser."),
+                        false,
+                    );
+                    self.update(|snapshot| snapshot.catalog.busy = true);
+                }
+            }
+            Command::SourceSignOut(name) => {
+                self.submit(Job::SourceSignOut(name));
+            }
+            Command::AddSource(entry, values) => {
+                if self.submit(Job::AddSource(entry.clone(), values)) {
+                    if entry.sign_in {
+                        self.notify(
+                            format!("Finish signing in to {} in your browser.", entry.name),
+                            false,
+                        );
+                    }
+                    self.update(|snapshot| snapshot.catalog.busy = true);
+                }
+            }
+            Command::RemoveSource(name) => match sources::connector_id(&name) {
+                Some(id) => {
+                    self.submit(Job::SourceSignOut(name));
+                    let mut next = self.settings.clone();
+                    next.connectors.retain(|connector| connector != id);
+                    self.save_settings(next);
+                    self.submit(Job::ReloadSources);
+                }
+                None => {
+                    self.submit(Job::RemoveSource(name));
+                }
+            },
+            Command::SearchCatalog(query) => {
+                let query = query.trim().to_owned();
+                if query.is_empty() {
+                    self.update(|snapshot| {
+                        snapshot.catalog.query.clear();
+                        snapshot.catalog.results = None;
+                        snapshot.catalog.error = None;
+                    });
+                } else if self.submit(Job::SearchCatalog(query.clone())) {
+                    self.update(|snapshot| {
+                        snapshot.catalog.query = query;
+                        snapshot.catalog.searching = true;
+                        snapshot.catalog.error = None;
+                    });
+                }
+            }
             Command::DismissNotice(id) => {
                 self.update(|snapshot| {
                     if snapshot
@@ -512,10 +592,45 @@ impl Controller {
                             enabled: server.enabled,
                             hidden: server.hidden,
                             problem: server.problem,
+                            needs_sign_in: server.needs_sign_in,
+                            signed_in: server.signed_in,
+                            builtin: server.builtin,
                         })
                         .collect(),
                     problem,
                 };
+            }),
+            Report::SourceDone(result) => {
+                match result {
+                    Ok(message) => self.notify(message, false),
+                    Err(message) => self.notify(message, true),
+                }
+                self.update(|snapshot| snapshot.catalog.busy = false);
+            }
+            Report::ConnectorAdded(id) => {
+                if !self.settings.connectors.contains(&id) {
+                    let mut next = self.settings.clone();
+                    next.connectors.push(id.clone());
+                    self.save_settings(next);
+                }
+                self.submit(Job::ReloadSources);
+                if let Some(name) = sources::connector_name(&id) {
+                    self.notify(
+                        format!("Finish signing in to {name} in your browser."),
+                        false,
+                    );
+                    self.submit(Job::SourceSignIn(name.into()));
+                }
+            }
+            Report::Catalog(query, result) => self.update(|snapshot| {
+                if snapshot.catalog.query != query {
+                    return;
+                }
+                snapshot.catalog.searching = false;
+                match result {
+                    Ok(results) => snapshot.catalog.results = Some(results),
+                    Err(error) => snapshot.catalog.error = Some(error),
+                }
             }),
             Report::ApiKeySaved(provider, result) => {
                 match result {

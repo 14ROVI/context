@@ -13,6 +13,7 @@ use crate::capture::{self, Focus};
 use crate::history::{self, Entry, FollowUp};
 use crate::model::{Answer, Assistant, Fix, Request, needs};
 use crate::settings::{Provider, Settings};
+use crate::sources::catalog::{self, Added, Entry as CatalogEntry};
 use crate::sources::{SourceStatus, Sources};
 
 /// Blocking work for the worker thread.
@@ -29,6 +30,16 @@ pub enum Job {
     SignIn,
     SignOut,
     ReloadSources,
+    /// Signs in to a source in the browser, then reconnects.
+    SourceSignIn(String),
+    SourceSignOut(String),
+    /// Adds a catalog entry with the values from its form.
+    AddSource(
+        Box<CatalogEntry>,
+        serde_json::Map<String, serde_json::Value>,
+    ),
+    RemoveSource(String),
+    SearchCatalog(String),
     Configure(Settings),
     SetApiKey(Provider, Option<String>),
     ListModels(Provider),
@@ -54,6 +65,11 @@ pub enum Report {
     SignedIn(std::result::Result<String, Problem>),
     SignedOut(String),
     Sources(Vec<SourceStatus>, Option<String>),
+    /// A source action finished; the message is shown to the user.
+    SourceDone(std::result::Result<String, String>),
+    /// A built-in connector was added and should be saved in settings.
+    ConnectorAdded(String),
+    Catalog(String, std::result::Result<Vec<CatalogEntry>, String>),
     ApiKeySaved(Provider, std::result::Result<(), String>),
     Models(Provider, std::result::Result<Vec<String>, String>),
 }
@@ -94,9 +110,54 @@ pub fn start(
                         })
                     }
                     Job::ReloadSources => {
-                        sources.reload();
-                        let (servers, problem) = sources.status();
-                        send(Report::Sources(servers, problem))
+                        sources.reload(&settings.connectors);
+                        send(sources_report(&sources))
+                    }
+                    Job::SourceSignIn(name) => {
+                        let result = sources
+                            .sign_in(&name)
+                            .map(|()| format!("{name} is connected."))
+                            .map_err(|error| error.to_string());
+                        sources.reload(&settings.connectors);
+                        send(Report::SourceDone(result)) && send(sources_report(&sources))
+                    }
+                    Job::SourceSignOut(name) => {
+                        let result = sources
+                            .sign_out(&name)
+                            .map(|()| format!("Signed out of {name}."))
+                            .map_err(|error| error.to_string());
+                        sources.reload(&settings.connectors);
+                        send(Report::SourceDone(result)) && send(sources_report(&sources))
+                    }
+                    Job::AddSource(entry, values) => match catalog::add(&entry, &values) {
+                        Ok(Added::Connector(id)) => send(Report::ConnectorAdded(id)),
+                        Ok(Added::Server(name)) => {
+                            sources.reload(&settings.connectors);
+                            let result = if entry.sign_in {
+                                sources
+                                    .sign_in(&name)
+                                    .map(|()| format!("{} is connected.", entry.name))
+                                    .map_err(|error| error.to_string())
+                            } else {
+                                Ok(format!("Added {}.", entry.name))
+                            };
+                            if entry.sign_in {
+                                sources.reload(&settings.connectors);
+                            }
+                            send(Report::SourceDone(result)) && send(sources_report(&sources))
+                        }
+                        Err(error) => send(Report::SourceDone(Err(error.to_string()))),
+                    },
+                    Job::RemoveSource(name) => {
+                        let result = catalog::remove(&name)
+                            .map(|()| format!("Removed {name}."))
+                            .map_err(|error| error.to_string());
+                        sources.reload(&settings.connectors);
+                        send(Report::SourceDone(result)) && send(sources_report(&sources))
+                    }
+                    Job::SearchCatalog(query) => {
+                        let results = sources.search(&query).map_err(|error| error.to_string());
+                        send(Report::Catalog(query, results))
                     }
                     Job::Configure(next) => {
                         settings = next;
@@ -121,6 +182,11 @@ pub fn start(
             }
         })?;
     Ok(())
+}
+
+fn sources_report(sources: &Sources) -> Report {
+    let (servers, problem) = sources.status();
+    Report::Sources(servers, problem)
 }
 
 fn analyze(

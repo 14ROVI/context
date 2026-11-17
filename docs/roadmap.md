@@ -28,9 +28,10 @@ Work through these in order unless something more urgent comes up. Tick items of
 
 ### Easy sources
 
-- [ ] **OAuth for remote MCP servers.** Show *Needs sign-in* with a **Sign in** button when a server answers 401. Use Client ID Metadata Documents (CIMD), falling back to dynamic client registration or a pre-registered client, and keep tokens in the credential store. GitHub's server needs a registered GitHub OAuth app.
-- [ ] **Source catalog.** A curated list plus search backed by the [MCP Registry](https://registry.modelcontextprotocol.io). Show a form for each server's settings, with secrets kept in the credential store. Consider `.mcpb` bundles for local servers.
-- [ ] **Built-in calendar connectors.** Google Calendar and Microsoft 365 with one-click, read-only sign-in, exposed to the model as tools. This needs a Google Cloud project and OAuth verification before a public release.
+- [x] **OAuth for remote MCP servers.** *Needs sign-in* and **Sign in** per source, with discovery, dynamic client registration, PKCE, refresh and encrypted grants. Verified against Notion up to the consent page. Not done: Client ID Metadata Documents, which need a hosted page.
+- [x] **Source catalog.** Featured sources, MCP Registry search, and an add form whose secrets are stored encrypted as `${secret:…}`. Not done: `.mcpb` bundles and Docker packages.
+- [ ] **Context's OAuth apps.** Create the Google Cloud OAuth client and the GitHub OAuth app, then add their IDs as repository secrets. Until then Google Calendar is unavailable and GitHub asks for a token. See [Sources](sources.md#contexts-oauth-apps).
+- [ ] **Built-in calendar connectors.** Google Calendar is built and waits on its OAuth client to be tested. Microsoft 365 is not started. A public Google release needs OAuth verification.
 - [x] **Suggestions on the card.** When an answer needed a source that isn't connected, the card offers **Connect calendar** and similar, which opens Settings.
 
 ### Product depth
