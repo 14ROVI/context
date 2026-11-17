@@ -75,7 +75,7 @@ Automatic cards are off by default. When on, each stage is cheaper than the next
 4. **Gate, cheap model.** The worker sends only the new text, not a screenshot, to the provider's smallest model: a nano, mini or "luna" model on OpenAI, or Claude Haiku 5.5 on Anthropic. The model must answer YES or NO.
 5. **Full check.** On YES, Context captures the screen and runs the normal analysis with sources, telling the model which new text triggered it and to answer only if it can help. A card appears only with an answer, without taking focus. At most 6 full checks run an hour.
 
-Nothing leaves the computer before the gate, and excluded apps are never captured, not even locally. The sidebar shows which app automatic cards are watching.
+Nothing leaves the computer before the gate. Excluded apps and well-known games are never captured, not even locally: in-game chat is full of questions that are not for Context, and a card would interrupt play. The game list is `GAMES` in [`src/app/watch.rs`](../src/app/watch.rs), and matches each program's reported name, such as "League of Legends", or its file name. The shortcut still works in games. The sidebar shows which app automatic cards are watching.
 
 ## Pages and trust
 

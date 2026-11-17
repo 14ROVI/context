@@ -64,19 +64,23 @@ pub fn take() -> Result<Snapshot> {
 }
 
 /// The focused window's own pixels, for automatic cards to compare and read
-/// locally. `None` when Context itself is focused or the window is minimized.
+/// locally. `None` when Context itself is focused, the window is minimized, or
+/// `skip` returns true for its app, which is then never captured.
 pub struct WindowShot {
     pub app: String,
     pub title: String,
     pub image: RgbaImage,
 }
 
-pub fn focused_window_image() -> Option<WindowShot> {
+pub fn focused_window_image(skip: impl Fn(&str) -> bool) -> Option<WindowShot> {
     let window = focused_window()?;
     if window.pid().ok() == Some(std::process::id()) || window.is_minimized().unwrap_or(false) {
         return None;
     }
     let app = window.app_name().ok().and_then(tidy_app_name)?;
+    if skip(&app) {
+        return None;
+    }
     let title = window.title().unwrap_or_default();
     let image = window.capture_image().ok()?;
     Some(WindowShot { app, title, image })

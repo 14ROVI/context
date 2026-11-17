@@ -131,14 +131,12 @@ impl Watcher {
         if self.failed || (self.reader.is_none() && !self.load_reader()) {
             return true;
         }
-        let Some(shot) = capture::focused_window_image() else {
-            return true;
-        };
-        // Excluded apps are never captured, not even locally.
-        if settings.excludes(&shot.app) {
+        // Excluded apps and games are never captured, not even locally.
+        let skip = |app: &str| settings.excludes(app) || is_game(app);
+        let Some(shot) = capture::focused_window_image(skip) else {
             self.window = None;
             return true;
-        }
+        };
         let window = format!("{}\u{1f}{}", shot.app, shot.title);
         let thumbnail = thumbnail(&shot.image);
         if self.window.as_ref() != Some(&window) {
@@ -291,6 +289,82 @@ fn normalize(line: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+/// Well-known games and their launchers, in lower case. The desktop reports a
+/// program's description where it has one, such as "League of Legends", and
+/// its file name without `.exe` otherwise, so both are listed. In-game chat is
+/// full of questions that are not for Context, and a card over a game
+/// interrupts it. Names match exactly, so "rust" would not match "rustrover".
+const GAMES: &[&str] = &[
+    // Riot
+    "league of legends",
+    "leagueclient",
+    "leagueclientux",
+    "leagueclientuxrender",
+    "riot client",
+    "riotclientux",
+    "riotclientservices",
+    "valorant",
+    "valorant-win64-shipping",
+    // Shooters
+    "counter-strike 2",
+    "cs2",
+    "apex legends",
+    "r5apex",
+    "r5apex_dx12",
+    "fortnite",
+    "fortniteclient-win64-shipping",
+    "overwatch",
+    "call of duty",
+    "cod",
+    "pubg: battlegrounds",
+    "tslgame",
+    "rainbow six siege",
+    "rainbowsix",
+    "rainbowsix_vulkan",
+    "destiny 2",
+    "destiny2",
+    "escape from tarkov",
+    "escapefromtarkov",
+    "marvel rivals",
+    "marvel-win64-shipping",
+    // Online, sandbox and others
+    "dota 2",
+    "dota2",
+    "rocket league",
+    "rocketleague",
+    "minecraft",
+    "minecraft.windows",
+    "roblox",
+    "robloxplayerbeta",
+    "world of warcraft",
+    "wow",
+    "hearthstone",
+    "diablo iv",
+    "path of exile",
+    "pathofexile",
+    "pathofexile_x64steam",
+    "genshin impact",
+    "genshinimpact",
+    "honkai: star rail",
+    "starrail",
+    "zenless zone zero",
+    "zenlesszonezero",
+    "osu!",
+    "grand theft auto v",
+    "gta5",
+    "gta5_enhanced",
+    "elden ring",
+    "eldenring",
+    "baldur's gate 3",
+    "bg3",
+    "bg3_dx11",
+];
+
+fn is_game(app: &str) -> bool {
+    let app = app.to_lowercase();
+    GAMES.contains(&app.as_str())
 }
 
 /// Whether a line looks like it asks the reader for something.

@@ -39,7 +39,7 @@ Work through these in order unless something more urgent comes up. Tick items of
 ### Product depth
 
 - [x] **Follow-up questions** on saved results, answered with the same screenshot and sources.
-- [x] **Automatic cards (experimental).** Off by default. New text in the focused window is found with a local pixel diff and OCR, filtered, and checked by a cheap text-only model before any screenshot is analysed. Verified on Windows: a new chat question produced a card about 10 seconds later, without taking focus. Tune from daily use: how often cards help, how often they interrupt, and how much usage they consume. Not yet handled: telling the user's own new messages apart from other people's, beyond what the gate model infers.
+- [x] **Automatic cards (experimental).** Off by default. New text in the focused window is found with a local pixel diff and OCR, filtered, and checked by a cheap text-only model before any screenshot is analysed. Well-known games are skipped. Verified on Windows: a new chat question produced a card about 10 seconds later, without taking focus. Tune from daily use: how often cards help, how often they interrupt, and how much usage they consume. Not yet handled: telling the user's own new messages apart from other people's, beyond what the gate model infers.
 - [x] **Privacy controls.** Excluded apps, an option not to keep screenshots, and history that clears after a set number of days.
 - [x] **More model providers.** OpenAI and Anthropic API keys alongside the ChatGPT plan. Not yet tested with live keys.
 
