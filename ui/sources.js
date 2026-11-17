@@ -37,7 +37,9 @@ export function renderSources(state, preset) {
       { class: "note" },
       "Advanced: ",
       h("button", { class: "inline-link", type: "button", onclick: () => invoke("edit_sources") }, "edit mcp.json"),
-      " to add any MCP server by hand.",
+      " to add any MCP server by hand, then ",
+      h("button", { class: "inline-link", type: "button", onclick: () => invoke("reload_sources") }, "reload"),
+      ".",
     ),
   );
 }

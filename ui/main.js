@@ -17,10 +17,7 @@ let selected = null;
 let view = "history";
 /** A kind of source to look for when Settings opens, such as "calendar". */
 let sourceSearch = null;
-/** Follow-up questions being typed, by entry id. */
-const questions = new Map();
 let confirmClear = false;
-let copied = null;
 /** Screenshots already fetched, by entry id. */
 const screenshots = new Map();
 /** What the main area last showed, so it is rebuilt only when that changes. */
@@ -61,16 +58,12 @@ function openSettings(search) {
 function render() {
   if (!state) return;
   const scroll = sidebar.querySelector(".history")?.scrollTop ?? 0;
-  sidebar.replaceChildren(brand(), capturePanel(), historyHeader(), historyList(), sourcesPanel(), accountPanel());
+  sidebar.replaceChildren(capturePanel(), historyHeader(), historyList(), accountPanel());
   sidebar.querySelector(".history").scrollTop = scroll;
   renderMain();
 }
 
 // Sidebar
-
-function brand() {
-  return h("div", { class: "brand" }, logo(22), "Context");
-}
 
 function capturePanel() {
   const capture = state.capturing
@@ -151,59 +144,6 @@ function historyList() {
   return list;
 }
 
-function sourcesPanel() {
-  const { sources } = state;
-  const panel = h(
-    "div",
-    { class: "sources" },
-    h(
-      "div",
-      { class: "section" },
-      "Sources",
-      h(
-        "div",
-        { class: "row" },
-        button("Edit", "ghost small", () => invoke("edit_sources")),
-        button("Reload", "ghost small", () => invoke("reload_sources")),
-      ),
-    ),
-  );
-  if (sources.connecting) {
-    panel.append(h("div", { class: "note" }, "Connecting sources…"));
-    return panel;
-  }
-  if (sources.problem) panel.append(h("div", { class: "problem" }, sources.problem));
-  if (sources.servers.length === 0 && !sources.problem) {
-    panel.append(h("div", { class: "note" }, "Add MCP servers so answers can check your calendar, docs and more."));
-  }
-  for (const server of sources.servers) {
-    let kind = "";
-    let detail;
-    if (server.needsSignIn) {
-      kind = "idle";
-      detail = "Needs sign-in. Open Settings to connect.";
-    } else if (server.problem) {
-      kind = "error";
-      detail = server.problem;
-    } else if (server.enabled === 0) {
-      kind = "idle";
-      detail = `No read-only tools, ${server.hidden} hidden`;
-    } else {
-      detail = plural(server.enabled, "tool") + (server.hidden ? `, ${server.hidden} hidden` : "");
-    }
-    panel.append(
-      h(
-        "div",
-        { class: `source ${kind}`, title: detail },
-        h("span", { class: "dot" }),
-        h("span", { class: "name truncate" }, server.name),
-        h("span", { class: "detail truncate" }, detail),
-      ),
-    );
-  }
-  return panel;
-}
-
 function accountPanel() {
   const { account } = state;
   let who;
@@ -270,11 +210,9 @@ function renderMain() {
   }
   const entry = state.entries.find((item) => item.id === selected);
   const key = JSON.stringify([
-    state.asking,
     state.notice,
     state.historyProblem,
     entry ?? null,
-    entry ? copied === entry.id : false,
     entry ? screenshots.has(entry.id) : false,
     entry ? null : [state.account, state.shortcut],
   ]);
@@ -315,64 +253,12 @@ function detail(entry) {
   return h(
     "div",
     {},
-    h("div", { class: "when" }, entry.app && h("span", { class: "chip" }, entry.app), when),
+    h("div", { class: "when" }, when),
     h("h1", {}, entry.text.headline),
     entry.text.summary && h("p", { class: "summary" }, entry.text.summary),
     paragraphs.length > 0 && h("div", { class: "details" }, paragraphs.map((text) => h("p", {}, text))),
-    h(
-      "div",
-      { class: "actions" },
-      button(copied === entry.id ? "Copied" : "Copy", "secondary", async () => {
-        await invoke("copy_text", { text: plainText(entry.text) });
-        copied = entry.id;
-        renderMain();
-      }),
-      button("Delete", "danger", () => invoke("delete_entry", { id: entry.id })),
-    ),
-    followUps(entry),
     shot && [h("div", { class: "shot-label" }, "What Context saw"), h("img", { class: "shot", src: shot, alt: "The screen Context captured" })],
     h("div", { class: "provenance" }, provenance(entry.sources ?? [])),
-  );
-}
-
-function followUps(entry) {
-  const thread = entry.follow_ups ?? [];
-  const asking = state.asking === entry.id;
-  const box = h("textarea", {
-    class: "field",
-    rows: "2",
-    placeholder: "Ask a follow-up about this result",
-    disabled: asking,
-    oninput: (event) => questions.set(entry.id, event.target.value),
-  });
-  box.value = questions.get(entry.id) ?? "";
-  const ask = () => {
-    const question = (questions.get(entry.id) ?? "").trim();
-    if (!question || asking) return;
-    questions.delete(entry.id);
-    invoke("ask_follow_up", { id: entry.id, question });
-  };
-  box.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      ask();
-    }
-  });
-  return h(
-    "div",
-    { class: "follow-ups" },
-    thread.map((item) =>
-      h(
-        "div",
-        { class: "follow-up" },
-        h("p", { class: "question" }, item.question),
-        h("p", { class: "answer" }, item.answer),
-        item.sources?.length > 0 && h("p", { class: "via-note" }, `Checked ${item.sources.join(", ")}`),
-      ),
-    ),
-    asking
-      ? h("div", { class: "asking" }, dots(), "Thinking about your question…")
-      : h("div", { class: "ask" }, box, button("Ask", "secondary", ask)),
   );
 }
 
@@ -445,13 +331,6 @@ function dayLabel(time) {
 
 const clock = (time) => time.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
-function plural(count, noun) {
-  return count === 1 ? `1 ${noun}` : `${count} ${noun}s`;
-}
-
-function plainText(text) {
-  return [text.headline, text.summary, text.details].filter(Boolean).join("\n\n");
-}
 
 function provenance(sources) {
   return sources.length === 0

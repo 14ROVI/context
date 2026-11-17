@@ -16,7 +16,7 @@ Connected sources show their tools, or *Needs sign-in* with a **Sign in** button
 
 ## mcp.json
 
-Featured and search results are saved to `mcp.json`, which you can also edit by hand. Choose **Edit** under **Sources** in the sidebar, save, then choose **Reload**.
+Featured and search results are saved to `mcp.json`, which you can also edit by hand. In Settings, under **Sources**, choose **edit mcp.json**, save, then choose **reload**.
 
 | Platform | `mcp.json` location |
 | --- | --- |
@@ -111,7 +111,7 @@ Context decides which tools the model sees:
 - Without one, only tools the server marks read-only (`readOnlyHint`) are offered.
 - Built-in connectors are read-only.
 
-Settings and the sidebar show how many tools each source offers and how many it hides. To allow a tool that changes data, list it in `tools`. Do that only for tools you trust the model to call without asking.
+Settings shows how many tools each source offers and how many it hides. To allow a tool that changes data, list it in `tools`. Do that only for tools you trust the model to call without asking.
 
 Each capture allows up to 8 tool calls over 4 model turns, with a 20-second limit per call. Tool output is cut at 12,000 characters. The model treats tool results as untrusted data, like the screen, and is told not to use a tool for something it was not built for.
 

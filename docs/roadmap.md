@@ -7,7 +7,7 @@
 - A Tauri 2 app on cross-platform crates for capture, shortcuts, the tray, secret storage and MCP, with HTML pages for the windows. The only OS-specific code is one Windows process flag, described in [Architecture](architecture.md#cross-platform-approach).
 - Whole-display capture on demand, with focused-app metadata, analyzed through [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source).
 - A corner card that shows progress, the answer, *nothing to add* or a problem, without taking focus.
-- A main window with onboarding, day-grouped encrypted history with the screenshot behind each result, copy, delete and clear.
+- A main window with onboarding, day-grouped encrypted history with the screenshot behind each result, and clear.
 - `context capture` for desktops where apps cannot register global shortcuts.
 - [Sources](sources.md): MCP servers over stdio or HTTP that the model can query, limited to read-only tools unless the user lists others. Cards and history name the sources used.
 
@@ -38,7 +38,7 @@ Work through these in order unless something more urgent comes up. Tick items of
 
 ### Product depth
 
-- [x] **Follow-up questions** on saved results, answered with the same screenshot and sources.
+- [x] **Follow-up questions** on saved results, answered with the same screenshot and sources. The main window no longer offers them; the worker command remains.
 - [x] **Automatic cards (experimental).** Off by default. New text in the focused window is found with a local pixel diff and OCR, filtered, and checked by a cheap text-only model before any screenshot is analysed. Well-known games are skipped. Verified on Windows: a new chat question produced a card about 10 seconds later, without taking focus. Tune from daily use: how often cards help, how often they interrupt, and how much usage they consume. Not yet handled: telling the user's own new messages apart from other people's, beyond what the gate model infers.
 - [x] **Privacy controls.** Excluded apps, an option not to keep screenshots, and history that clears after a set number of days.
 - [x] **More model providers.** OpenAI and Anthropic API keys alongside the ChatGPT plan. Not yet tested with live keys.

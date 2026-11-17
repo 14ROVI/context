@@ -44,14 +44,13 @@ Each run uploads `Context_<version>_x64-setup.exe` as an artifact. With `publish
 1. Choose **Connect ChatGPT** in the window, card or tray. Sign in and allow plan usage in your browser. See [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for eligible plans. To use an API key instead, see [Settings](#settings).
 2. In any app, press **Ctrl+Alt+Space** (**⌃⌥Space** on macOS). If another app holds it, Context uses **Ctrl+Alt+Shift+Space**. The window shows the active shortcut.
 3. A card opens in the corner while Context reads the screen. It shows the answer when ready. Choose **Open details** for the full text, or **Copy**.
-4. In the detail view, ask a follow-up question about any result. Context answers with the same screenshot and sources.
-5. Optionally, connect [sources](sources.md) such as a calendar so answers can check more than the screen. When an answer needed a source you have not connected, the card offers to connect one.
+4. Optionally, connect [sources](sources.md) such as a calendar so answers can check more than the screen. When an answer needed a source you have not connected, the card offers to connect one.
 
 The **Capture screen** button hides Context and captures the app behind it. On Wayland, add a desktop shortcut that runs `context capture`. Running `context` again brings the open window forward.
 
 Closing the window hides it, and Context keeps running in the tray. Click the tray icon to bring it back. Quit from the tray. When a plan or API usage limit is reached, the card links to the usage page.
 
-History keeps results forever by default, in your local app-data folder. In Settings you can keep them for 1, 7, 30 or 90 days instead. Records are encrypted with a key stored in your system credential store. Results show the app that was in focus when the desktop reports it. Each result keeps the screenshot it came from, encrypted in a `screenshots` subfolder. You can copy or delete a result, or clear all history. Deleting a result deletes its screenshot.
+History keeps results forever by default, in your local app-data folder. In Settings you can keep them for 1, 7, 30 or 90 days instead. Records are encrypted with a key stored in your system credential store. Each result keeps the screenshot it came from, encrypted in a `screenshots` subfolder. You can clear all history, which deletes the screenshots too.
 
 ## Settings
 
@@ -83,11 +82,10 @@ For a manual check:
 
 1. Start signed out, then run `context capture`. A card should offer **Connect ChatGPT**.
 2. Connect, open a chat or document, and press the shortcut. The card should show progress without taking focus, then the answer.
-3. Choose **Open details**. Copy and delete the result.
+3. Choose **Open details** and confirm the result and its screenshot show.
 4. Quit and restart to confirm history survives.
 5. Run `context` while Context is open. The existing window should come forward.
 6. In Settings, switch the shortcut and confirm the sidebar shows the new one. Add the focused app to the excluded list, capture, and confirm the card says it is excluded.
-7. Ask a follow-up in the detail view and confirm the answer appears under the result.
-8. In `mcp.json`, add a stdio MCP server with one read-only tool and one other tool, plus an entry with a bad command. Choose **Reload**. The sidebar should show *1 tool, 1 hidden* and the bad command's error. Then capture a screen the tool can help with. The card should show *Checking …* and name the source.
+7. In `mcp.json`, add a stdio MCP server with one read-only tool and one other tool, plus an entry with a bad command. Choose **reload** in Settings. Sources should show *1 tool, 1 hidden* and the bad command's error. Then capture a screen the tool can help with. The card should show *Checking …* and name the source.
 
 Protected content may be missing from captures.
