@@ -312,6 +312,59 @@ body {
   border-radius: 8px;
 }
 
+.links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.source-link {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-link:hover {
+  background: var(--hover);
+}
+
+.source-link .title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-link .host {
+  flex: none;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.missing {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
 .provenance {
   margin-top: 24px;
   color: var(--subtle);

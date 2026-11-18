@@ -9,8 +9,8 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 1. A capture starts from the global shortcut, the tray, the **Capture screen** button or `context capture`. A second `context` process hands its command to the running one through Tauri's single-instance plugin and exits.
 2. The controller in [`app/mod.rs`](../src/app/mod.rs) checks the ChatGPT connection. If Context's own window is in front, it hides it first so the capture shows the app behind it.
 3. The worker thread captures the active window's display with XCap and reads the focused app's name and title. It reports the capture right away. A short *Searching for context…* notification appears, and the tray tooltip reads *Reading your screen…*.
-4. The worker sends the image, window metadata and the allowed [source](sources.md) tools to the Responses API. When the model calls a tool, the worker runs it on the MCP server, reports progress in the tray tooltip (*Checking calendar…*) and sends the result back to the model.
-5. The controller saves the answer, the sources it used and the screenshot to history. A native notification shows the headline and summary, *nothing to add* or the problem. Problems also appear in the main window, where a sign-in problem offers **Connect ChatGPT**.
+4. The worker sends the image, window metadata, the allowed [source](sources.md) tools and, unless it is turned off, the provider's [web search](sources.md#web-search) tool to the model. When the model calls a tool, the worker runs it on the MCP server, reports progress in the tray tooltip (*Checking calendar…*) and sends the result back to the model.
+5. The controller saves the answer, the sources it used, the pages it cited and the screenshot to history. A native notification shows the headline and summary, *nothing to add* or the problem. Problems also appear in the main window, where a sign-in problem offers **Connect ChatGPT**.
 6. The system draws the notification, so it never takes focus and follows the user's notification settings and Do Not Disturb. It has no buttons. Clicking it while it is on screen opens Context on that entry, or at Settings or the usage page for a problem.
 
 | Code | Owns |
@@ -29,7 +29,7 @@ Context is a Rust app with a [Tauri 2](https://v2.tauri.app) shell. Rust does th
 | [`ui/markdown.js`](../ui/markdown.js) | Renders the model's light Markdown (bold, italic, code, lists, links) as elements, never as HTML. |
 | [`src/capture.rs`](../src/capture.rs) | Display choice, focused-window metadata and JPEG encoding. |
 | [`src/model/mod.rs`](../src/model/mod.rs) | `Assistant`, which sends a request to the provider chosen in Settings, the tool-call limit both providers share, and errors that say how to fix them. |
-| [`src/model/prompt.rs`](../src/model/prompt.rs) | Instructions, limits and parsing of the final answer, shared by every provider. |
+| [`src/model/prompt.rs`](../src/model/prompt.rs) | Instructions, the web search on and off notes, limits and parsing of the final answer, shared by every provider. |
 | [`src/model/chatgpt/`](../src/model/chatgpt) | Sign in with ChatGPT: browser OAuth, account registration, token refresh and sign-out. |
 | [`src/model/openai.rs`](../src/model/openai.rs) | The Responses API for a ChatGPT plan or an OpenAI API key, with the tool-calling loop. |
 | [`src/model/anthropic.rs`](../src/model/anthropic.rs) | The Anthropic Messages API for Claude, with the tool-use loop, over raw HTTP since Rust has no official SDK. |
@@ -83,4 +83,4 @@ The pages load only from the app bundle, under a strict content security policy.
 
 ## Agent boundary
 
-The prompt treats the screenshot, window metadata and tool results as untrusted data. The model can decline by answering `NONE`, and can end with `NEEDS: <kind>` to suggest a source it lacked. Pages can never choose a URL to open: the usage page comes from the error Rust created. Context, not the model or the server, decides which tools are offered: read-only tools by default, or the user's explicit `tools` list. Calls are capped per capture. See [Sources](sources.md).
+The prompt treats the screenshot, window metadata and tool results as untrusted data. The model can decline by answering `NONE`, and can end with `NEEDS: <kind>` to suggest a source it lacked. Pages can never choose a URL to open: the usage page comes from the error Rust created, and a cited page is opened by its position in a saved entry. Context, not the model or the server, decides which tools are offered: read-only tools by default, or the user's explicit `tools` list. Calls are capped per capture. See [Sources](sources.md).

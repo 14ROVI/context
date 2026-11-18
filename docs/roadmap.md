@@ -42,6 +42,7 @@ Work through these in order unless something more urgent comes up. Tick items of
 
 - [x] **Automatic cards (experimental).** Off by default. New text in the focused window is found with a local pixel diff and OCR, filtered, and checked by a cheap text-only model before any screenshot is analysed. Well-known games are skipped. Verified on Windows: a new chat question produced a card about 10 seconds later, without taking focus. Tune from daily use: how often cards help, how often they interrupt, and how much usage they consume. Not yet handled: telling the user's own new messages apart from other people's, beyond what the gate model infers.
 - [x] **Privacy controls.** Excluded apps, an option not to keep screenshots, and history that clears after a set number of days.
+- [x] **Web search.** On by default through each provider's own search tool, with cited pages saved in history and a clear note when an answer needed search it couldn't use. Verified on Windows on 17 November 2026 with a ChatGPT plan: a TradingView NVDA chart produced a card explaining the after-hours move from NVIDIA's quarterly results, citing NVIDIA's investor page. Not yet checked live: Anthropic search, the search-off path, and clicking a cited page.
 - [x] **More model providers.** OpenAI and Anthropic API keys alongside the ChatGPT plan. Not yet tested with live keys.
 
 ### Cleanup

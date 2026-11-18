@@ -18,6 +18,7 @@ use reqwest::redirect::Policy;
 use self::chatgpt::ChatGpt;
 use crate::Result;
 use crate::capture::Snapshot;
+use crate::history::Link;
 use crate::settings::{Provider, Settings};
 use crate::sources::Sources;
 use crate::storage::{self, Record};
@@ -87,6 +88,8 @@ pub struct Answer {
     /// `None` when the model had nothing useful to add.
     pub text: Option<String>,
     pub sources: Vec<String>,
+    /// Web pages the answer cites.
+    pub links: Vec<Link>,
     /// A kind of source the model said would have helped, such as `calendar`.
     pub needs: Option<String>,
 }
@@ -203,12 +206,23 @@ impl Assistant {
         settings: &Settings,
     ) -> Result<Answer> {
         let preferred = settings.model.as_deref();
+        let web = settings.web_search;
+        let request = Request {
+            instructions: format!(
+                "{}{}",
+                request.instructions,
+                if web { prompt::WEB } else { prompt::NO_WEB }
+            ),
+            text: request.text.clone(),
+            image: request.image,
+        };
+        let request = &request;
         match settings.provider {
             Provider::Anthropic => {
                 let key = api_key(Provider::Anthropic)?;
                 let model = preferred.unwrap_or(anthropic::DEFAULT_MODEL);
                 crate::debug(format_args!("Anthropic API: using {model}"));
-                anthropic::analyze(&self.http, &key, model, request, sources, progress)
+                anthropic::analyze(&self.http, &key, model, request, sources, progress, web)
             }
             provider => {
                 let (token, service) = self.openai_token(provider)?;
@@ -216,7 +230,7 @@ impl Assistant {
                 let model = openai::choose_model(&models, preferred, service)?;
                 crate::debug(format_args!("{provider:?}: using {model} of {models:?}"));
                 openai::analyze(
-                    &self.http, &token, &model, request, sources, progress, service,
+                    &self.http, &token, &model, request, sources, progress, service, web,
                 )
             }
         }
@@ -238,6 +252,7 @@ struct Lookups<'a> {
     progress: &'a dyn Fn(String),
     calls_left: usize,
     used: Vec<String>,
+    links: Vec<Link>,
 }
 
 impl<'a> Lookups<'a> {
@@ -247,6 +262,49 @@ impl<'a> Lookups<'a> {
             progress,
             calls_left: prompt::MAX_TOOL_CALLS,
             used: Vec::new(),
+            links: Vec::new(),
+        }
+    }
+
+    /// Notes that the provider searched the web for this answer.
+    fn searched(&mut self) {
+        const WEB: &str = "the web";
+        if !self.used.iter().any(|source| source == WEB) {
+            (self.progress)("Searching the web…".into());
+            self.used.push(WEB.into());
+        }
+    }
+
+    /// Keeps a page the answer cites. Only web addresses are kept, since the
+    /// user may open them from history.
+    fn cite(&mut self, url: &str, title: &str) {
+        let url = url.trim();
+        let web = url.starts_with("https://") || url.starts_with("http://");
+        if !web
+            || self.links.len() >= prompt::MAX_LINKS
+            || self.links.iter().any(|link| link.url == url)
+        {
+            return;
+        }
+        let title: String = title.trim().chars().take(120).collect();
+        self.links.push(Link {
+            title: if title.is_empty() {
+                url.to_owned()
+            } else {
+                title
+            },
+            url: url.to_owned(),
+        });
+    }
+
+    /// The final answer, with what was consulted on the way.
+    fn answer(self, text: &str) -> Answer {
+        let (text, needs) = prompt::finish(text);
+        Answer {
+            text,
+            sources: self.used,
+            links: self.links,
+            needs,
         }
     }
 

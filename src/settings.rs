@@ -42,6 +42,8 @@ pub struct Settings {
     pub auto_cards: bool,
     /// Connectors built into Context that the user added, such as `google-calendar`.
     pub connectors: Vec<String>,
+    /// Let the model search the web through the provider's own search tool.
+    pub web_search: bool,
 }
 
 impl Default for Settings {
@@ -56,6 +58,7 @@ impl Default for Settings {
             excluded_apps: Vec::new(),
             auto_cards: false,
             connectors: Vec::new(),
+            web_search: true,
         }
     }
 }

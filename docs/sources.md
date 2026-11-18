@@ -4,6 +4,16 @@
 
 Sources let an answer go beyond the screen. A source is an [MCP](https://modelcontextprotocol.io) server, or a connector built into Context such as Google Calendar. When the screen raises a question a source can answer, such as a friend asking whether you're free on Monday, the model calls that source's tools before it writes the answer.
 
+## Web search
+
+Web search is on by default, under **Settings → Web search**. It uses the provider's own search tool: OpenAI's `web_search` for a ChatGPT plan or OpenAI key, and Anthropic's `web_search` for Claude, with at most 5 searches per capture. The prompt tells the model to search for the background behind what the screen shows, such as the news behind a stock move, and never to put private details from the screen into a query.
+
+The answer keeps up to 6 cited pages. They appear under **Sources** in history. Clicking one sends only the entry and the link's position to Rust, which opens the saved address if it is `http` or `https`. Inline citation links in the text are removed.
+
+If the plan, model or organization refuses web search, Context retries without it. When search is off or refused, the model is told it cannot search. If the screen needed the web, it describes what it sees, says it could not check, and ends with `NEEDS: web`. The entry then shows *Context couldn't search the web for this answer* with **Turn on web search**. With no answer at all, the notification says the same.
+
+On an Anthropic key, searches are billed at about $10 per 1,000. On an OpenAI key they are billed per call.
+
 ## Add a source
 
 Open **Settings** and go to **Sources**.

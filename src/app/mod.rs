@@ -72,6 +72,8 @@ pub enum Command {
     RemoveSource(String),
     SearchCatalog(String),
     DismissNotice(u64),
+    /// Opens a web page an entry cites, by its position in the entry's links.
+    OpenLink(Uuid, usize),
     Quit,
 }
 
@@ -406,6 +408,22 @@ impl Controller {
         match command {
             Command::Quit => {}
             Command::Open(selection) => self.open(selection),
+            Command::OpenLink(id, index) => {
+                // The page names only an entry and a position, never the address.
+                let url = self
+                    .history
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .and_then(|entry| entry.links.get(index))
+                    .map(|link| link.url.clone())
+                    .filter(|url| url.starts_with("https://") || url.starts_with("http://"));
+                if let Some(url) = url
+                    && let Err(error) = open::that_detached(&url)
+                {
+                    self.notify(format!("Could not open the page. {error}"), true);
+                }
+            }
             Command::OpenSettings(search) => {
                 self.open(None);
                 let _ = self.app.emit_to(MAIN, "open-settings", search);
@@ -633,10 +651,11 @@ impl Controller {
             Ok(Answer {
                 text,
                 sources,
+                links,
                 needs,
             }) => match text.as_deref().and_then(ContextText::from_response) {
                 Some(text) => {
-                    let entry = self.history.push(text, sources, screenshot);
+                    let entry = self.history.push(text, sources, links, needs, screenshot);
                     self.history.prune(self.settings.history_days);
                     notify::answer(&self.app, &entry);
                 }

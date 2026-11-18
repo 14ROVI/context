@@ -7,6 +7,13 @@ use uuid::Uuid;
 
 use crate::storage::{self, Record};
 
+/// A web page the answer cites.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Link {
+    pub title: String,
+    pub url: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ContextText {
     pub headline: String,
@@ -77,6 +84,12 @@ pub struct Entry {
     /// Connected sources the model consulted, such as `calendar`.
     #[serde(default)]
     pub sources: Vec<String>,
+    /// Web pages the answer cites.
+    #[serde(default)]
+    pub links: Vec<Link>,
+    /// A kind of source the model said it lacked, such as `web`.
+    #[serde(default)]
+    pub needs: Option<String>,
     /// Whether the capture was saved as `Record::Screenshot(id)`.
     #[serde(default)]
     pub has_screenshot: bool,
@@ -115,6 +128,8 @@ impl History {
         &mut self,
         text: ContextText,
         sources: Vec<String>,
+        links: Vec<Link>,
+        needs: Option<String>,
         screenshot: Option<Vec<u8>>,
     ) -> Entry {
         let id = Uuid::new_v4();
@@ -129,6 +144,8 @@ impl History {
                 .map_or(0, |time| time.as_secs() as i64),
             text,
             sources,
+            links,
+            needs,
             has_screenshot,
         };
         self.entries.insert(0, entry.clone());

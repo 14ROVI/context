@@ -50,7 +50,28 @@ pub fn list_models(http: &Client, key: &str) -> Result<Vec<String>> {
         .collect())
 }
 
+/// The web search tool version a model takes. Newer models filter results
+/// with code before reading them; older ones take the basic version.
+fn search_tool(model: &str) -> &'static str {
+    const FILTERING: [&str; 8] = [
+        "fable",
+        "mythos",
+        "opus-5",
+        "opus-4-8",
+        "opus-4-7",
+        "opus-4-6",
+        "sonnet-5",
+        "sonnet-4-6",
+    ];
+    if FILTERING.iter().any(|family| model.contains(family)) {
+        "web_search_20260209"
+    } else {
+        "web_search_20250305"
+    }
+}
+
 /// Asks Claude about one capture, running the tools it calls in between.
+/// With `web`, Claude may also use Anthropic's web search tool.
 pub fn analyze(
     http: &Client,
     key: &str,
@@ -58,6 +79,7 @@ pub fn analyze(
     request: &Request,
     sources: &Sources,
     progress: &dyn Fn(String),
+    mut web: bool,
 ) -> Result<Answer> {
     let first = json!([
         {"type": "text", "text": request.text},
@@ -67,6 +89,7 @@ pub fn analyze(
         },
     ]);
     let mut messages = vec![json!({"role": "user", "content": first})];
+    let mut instructions = request.instructions.clone();
     let tools: Vec<Value> = sources
         .definitions()
         .into_iter()
@@ -78,19 +101,31 @@ pub fn analyze(
             })
         })
         .collect();
+    let search = json!({
+        "type": search_tool(model),
+        "name": "web_search",
+        "max_uses": prompt::MAX_SEARCHES,
+    });
     let fallback = FALLBACK_MODELS.contains(&model);
     let mut lookups = Lookups::new(sources, progress);
+    // Text from turns the API paused during a long search, which the next
+    // request continues.
+    let mut paused_text = String::new();
 
     for round in 0..=MAX_TOOL_ROUNDS {
+        let mut offered = tools.clone();
+        if web {
+            offered.push(search.clone());
+        }
         let mut body = json!({
             "model": model,
             "max_tokens": MAX_TOKENS,
-            "system": request.instructions,
+            "system": instructions,
             "messages": messages,
             "output_config": {"effort": EFFORT},
         });
-        if !tools.is_empty() {
-            body["tools"] = json!(tools);
+        if !offered.is_empty() {
+            body["tools"] = json!(offered);
             // The last round asks for the answer, with no more lookups.
             if round == MAX_TOOL_ROUNDS || !lookups.left() {
                 body["tool_choice"] = json!({"type": "none"});
@@ -104,7 +139,7 @@ pub fn analyze(
         crate::debug(format_args!(
             "Anthropic round {round}: {} messages, {} tools",
             messages.len(),
-            tools.len()
+            offered.len()
         ));
         let response = send.json(&body).send()?;
         let status = response.status().as_u16();
@@ -114,6 +149,12 @@ pub fn analyze(
                 "Anthropic request failed (HTTP {status}): {}",
                 short(&reply)
             ));
+            // An organization can turn web search off. Answer without it.
+            if web && status == 400 && mentions_search(&reply) {
+                web = false;
+                instructions = instructions.replace(prompt::WEB, prompt::NO_WEB);
+                continue;
+            }
             return Err(api_error(&reply, status));
         }
         let stop = reply["stop_reason"].as_str().unwrap_or_default();
@@ -122,24 +163,40 @@ pub fn analyze(
             return Err("Claude declined to answer about this screen.".into());
         }
         let content = reply["content"].as_array().cloned().unwrap_or_default();
+        for block in &content {
+            match block["type"].as_str() {
+                Some("server_tool_use") if block["name"] == "web_search" => lookups.searched(),
+                Some("text") => {
+                    for citation in block["citations"].as_array().into_iter().flatten() {
+                        lookups.cite(
+                            citation["url"].as_str().unwrap_or_default(),
+                            citation["title"].as_str().unwrap_or_default(),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        let text: String = content
+            .iter()
+            .filter(|block| block["type"] == "text")
+            .filter_map(|block| block["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        // A long search can pause the turn. Send it back as is to continue.
+        if stop == "pause_turn" {
+            paused_text.push_str(&text);
+            messages.push(json!({"role": "assistant", "content": content}));
+            continue;
+        }
         let calls: Vec<&Value> = content
             .iter()
             .filter(|block| block["type"] == "tool_use")
             .collect();
         if stop != "tool_use" || calls.is_empty() {
-            let text: String = content
-                .iter()
-                .filter(|block| block["type"] == "text")
-                .filter_map(|block| block["text"].as_str())
-                .collect::<Vec<_>>()
-                .join("");
-            let (text, needs) = prompt::finish(&text);
-            return Ok(Answer {
-                text,
-                sources: lookups.used,
-                needs,
-            });
+            return Ok(lookups.answer(&(std::mem::take(&mut paused_text) + &text)));
         }
+        paused_text.clear();
         // Keep the assistant turn exactly as returned, including thinking and
         // fallback blocks, then answer every tool call in one user message.
         messages.push(json!({"role": "assistant", "content": content.clone()}));
@@ -160,6 +217,17 @@ pub fn analyze(
         progress("Writing the answer…".into());
     }
     Err("Claude kept asking for lookups without answering.".into())
+}
+
+/// Whether an error is about the web search tool, such as an organization
+/// that has turned it off.
+fn mentions_search(body: &Value) -> bool {
+    let message = body
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_lowercase();
+    message.contains("web_search") || message.contains("web search")
 }
 
 /// The model for quick decisions: the current Haiku.

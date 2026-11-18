@@ -27,6 +27,25 @@ pub const INSTRUCTIONS: &str = concat!(
     "to connect the source."
 );
 
+/// Added when the model may search the web.
+pub const WEB: &str = concat!(
+    " You can search the web. When what is on screen depends on outside or recent facts, such ",
+    "as a stock or price move, a news story, an event, a product, a public figure or an ",
+    "unfamiliar error, search for the background and explain why it matters or what caused it, ",
+    "not only what the screen already shows. For example, for a stock chart, find the news ",
+    "that moved the price. Prefer recent, reputable sources and say how recent they are. ",
+    "Search only for public subjects: never put private details from the screen, such as ",
+    "private people's names, email addresses, message text or account numbers, into a search."
+);
+
+/// Added when the model may not search the web, so it says so instead of
+/// passing off a description of the screen as the whole story.
+pub const NO_WEB: &str = concat!(
+    " You cannot search the web. If explaining the screen properly needs outside or recent ",
+    "facts, such as why a stock moved or what a news story is about, describe what the screen ",
+    "shows, say plainly that you could not check the web, and end with NEEDS: web."
+);
+
 /// Added for automatic checks, which run without the user asking.
 pub const QUIET: &str = concat!(
     " This check ran automatically, without the user asking. Reply with only NONE unless the ",
@@ -62,6 +81,10 @@ pub const MAX_TEXT_CHARS: usize = 1_400;
 pub const MAX_TOOL_ROUNDS: usize = 4;
 /// Tool calls allowed for one capture across all rounds.
 pub const MAX_TOOL_CALLS: usize = 8;
+/// Web searches allowed for one capture, where the provider lets Context set it.
+pub const MAX_SEARCHES: usize = 5;
+/// Cited web pages kept with an answer.
+pub const MAX_LINKS: usize = 6;
 
 /// Describes the moment and the focused window as data, so the model can
 /// resolve "Monday" and tell apps apart.

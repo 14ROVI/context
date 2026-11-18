@@ -14,6 +14,9 @@ use crate::sources::Sources;
 const RESOURCE: &str = "https://api.openai.com/v1";
 /// Image-capable models to prefer when Settings names none.
 const VISION_MODELS: [&str; 3] = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol"];
+/// Streamed text kept before citations are removed and the answer is cut to
+/// its final length. Inline citation links make the raw text longer.
+const MAX_STREAMED_CHARS: usize = MAX_TEXT_CHARS * 4;
 const PLAN_USAGE: &str = "https://chatgpt.com/settings/usage";
 const API_USAGE: &str = "https://platform.openai.com/usage";
 
@@ -115,6 +118,8 @@ pub(super) fn choose_model(
 }
 
 /// Asks the model about one capture, running the tools it calls in between.
+/// With `web`, the model may also use OpenAI's hosted web search.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn analyze(
     http: &Client,
     access_token: &str,
@@ -123,21 +128,29 @@ pub(super) fn analyze(
     sources: &Sources,
     progress: &dyn Fn(String),
     service: Service,
+    web: bool,
 ) -> Result<Answer> {
     let content = json!([
         {"type": "input_text", "text": request.text},
         {"type": "input_image", "image_url": data_url(request.image), "detail": "high"},
     ]);
     let mut input = vec![json!({"role": "user", "content": content})];
+    let mut instructions = request.instructions.clone();
     let mut tools = sources.definitions();
+    if web {
+        tools.push(json!({"type": "web_search"}));
+    }
     let mut lookups = Lookups::new(sources, progress);
+    // Until one request succeeds, a refusal may mean the plan or model does
+    // not take some tool, so Context retries with fewer.
+    let mut accepted = false;
 
     for round in 0..=MAX_TOOL_ROUNDS {
         // The last round offers no tools, so the model has to answer.
         let offer_tools = !tools.is_empty() && round < MAX_TOOL_ROUNDS && lookups.left();
         let mut body = json!({
             "model": model,
-            "instructions": request.instructions,
+            "instructions": instructions,
             "reasoning": {"effort": "low"},
             "store": false,
             "stream": true,
@@ -155,18 +168,25 @@ pub(super) fn analyze(
             input.len(),
             if offer_tools { tools.len() } else { 0 }
         ));
-        let turn = match send(http, access_token, &body) {
+        let turn = match send(http, access_token, &body, &mut || lookups.searched()) {
             Ok(turn) => turn,
-            // Some plans or models refuse tools. Answer from the screen alone.
+            // Some plans or models refuse tools. Drop web search first, then
+            // every tool, and answer from the screen alone if need be.
             Err(Failure::Api {
                 status,
                 body: error,
-            }) if round == 0 && !tools.is_empty() && rejects_tools(&error, status) => {
+            }) if !accepted && !tools.is_empty() && rejects_tools(&error, status) => {
                 crate::debug(format_args!(
-                    "tools refused (HTTP {status:?}): {}; retrying without tools",
+                    "tools refused (HTTP {status:?}): {}; retrying with fewer",
                     short(&error)
                 ));
-                tools.clear();
+                let before = tools.len();
+                tools.retain(|tool| tool["type"] != "web_search");
+                if tools.len() == before {
+                    tools.clear();
+                } else {
+                    instructions = instructions.replace(prompt::WEB, prompt::NO_WEB);
+                }
                 continue;
             }
             Err(failure) => {
@@ -179,6 +199,7 @@ pub(super) fn analyze(
                 return Err(failure.into_error(service));
             }
         };
+        accepted = true;
         crate::debug(format_args!(
             "round {round} done: {} chars of text, item types {:?}",
             turn.text.chars().count(),
@@ -187,18 +208,33 @@ pub(super) fn analyze(
                 .map(|item| item["type"].as_str().unwrap_or("?"))
                 .collect::<Vec<_>>()
         ));
+        for item in &turn.items {
+            match item["type"].as_str() {
+                Some("web_search_call") => lookups.searched(),
+                Some("message") => {
+                    let citations = item["content"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .flat_map(|part| part["annotations"].as_array().into_iter().flatten())
+                        .filter(|note| note["type"] == "url_citation");
+                    for citation in citations {
+                        lookups.cite(
+                            citation["url"].as_str().unwrap_or_default(),
+                            citation["title"].as_str().unwrap_or_default(),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
         let calls: Vec<&Value> = turn
             .items
             .iter()
             .filter(|item| item["type"] == "function_call")
             .collect();
         if calls.is_empty() || !offer_tools {
-            let (text, needs) = prompt::finish(&turn.text);
-            return Ok(Answer {
-                text,
-                sources: lookups.used,
-                needs,
-            });
+            return Ok(lookups.answer(&strip_citations(&turn.text)));
         }
         input.extend(turn.items.iter().cloned());
         for call in calls {
@@ -221,6 +257,31 @@ pub(super) fn analyze(
     .into())
 }
 
+/// Removes the inline citation links some models add, such as
+/// `([reuters.com](https://…))`. The cited pages are listed with the answer instead.
+fn strip_citations(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("([") {
+        let tail = &rest[at..];
+        let end = tail
+            .find("))")
+            .filter(|end| tail[..*end].contains("](http") && !tail[..*end].contains('\n'));
+        match end {
+            Some(end) => {
+                out.push_str(rest[..at].trim_end_matches(' '));
+                rest = &tail[end + 2..];
+            }
+            None => {
+                out.push_str(&rest[..at + 2]);
+                rest = &rest[at + 2..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// A small text-only request that returns the model's reply, used for quick
 /// yes-or-no decisions.
 pub(super) fn quick(
@@ -239,7 +300,7 @@ pub(super) fn quick(
         "stream": true,
         "input": [{"role": "user", "content": [{"type": "input_text", "text": text}]}],
     });
-    send(http, token, &body)
+    send(http, token, &body, &mut || {})
         .map(|turn| turn.text)
         .map_err(|failure| failure.into_error(service))
 }
@@ -292,7 +353,14 @@ impl<E: Into<Box<dyn std::error::Error + Send + Sync>>> From<E> for Failure {
     }
 }
 
-fn send(http: &Client, access_token: &str, body: &Value) -> std::result::Result<Turn, Failure> {
+/// Sends one request and reads the streamed response. `searching` runs when
+/// a hosted web search starts.
+fn send(
+    http: &Client,
+    access_token: &str,
+    body: &Value,
+    searching: &mut dyn FnMut(),
+) -> std::result::Result<Turn, Failure> {
     let response = http
         .post(format!("{RESOURCE}/responses"))
         .bearer_auth(access_token)
@@ -327,12 +395,13 @@ fn send(http: &Client, access_token: &str, body: &Value) -> std::result::Result<
         match event["type"].as_str() {
             Some("response.output_text.delta") => {
                 if let Some(delta) = event["delta"].as_str() {
-                    for ch in delta.chars().take(MAX_TEXT_CHARS - text_chars) {
+                    for ch in delta.chars().take(MAX_STREAMED_CHARS - text_chars) {
                         text.push(ch);
                         text_chars += 1;
                     }
                 }
             }
+            Some("response.web_search_call.in_progress") => searching(),
             Some("response.output_item.done") => items.push(event["item"].clone()),
             Some("response.completed") => return Ok(Turn { text, items }),
             Some("response.failed" | "error") => {

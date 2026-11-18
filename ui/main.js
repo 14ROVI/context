@@ -311,8 +311,55 @@ function detail(entry) {
     h("h1", {}, entry.text.headline),
     entry.text.summary && h("p", { class: "summary" }, inline(entry.text.summary)),
     entry.text.details && h("div", { class: "details markdown" }, markdown(entry.text.details)),
+    entry.needs && missing(entry.needs),
+    entry.links?.length > 0 && [h("div", { class: "shot-label" }, "Sources"), links(entry)],
     shot && [h("div", { class: "shot-label" }, "What Context saw"), h("img", { class: "shot", src: shot, alt: "The screen Context captured" })],
     h("div", { class: "provenance" }, provenance(entry.sources ?? [])),
+  );
+}
+
+/** The pages an answer cites. Rust opens them by position, so the page never passes an address. */
+function links(entry) {
+  return h(
+    "ul",
+    { class: "links" },
+    entry.links.map((link, index) =>
+      h(
+        "li",
+        {},
+        h(
+          "button",
+          { type: "button", class: "source-link", title: link.url, onclick: () => invoke("open_link", { id: entry.id, index }) },
+          h("span", { class: "title" }, link.title),
+          h("span", { class: "host" }, host(link.url)),
+        ),
+      ),
+    ),
+  );
+}
+
+function host(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/** Says what the answer could not check, with a way to fix it. */
+function missing(kind) {
+  const web = kind === "web";
+  return h(
+    "div",
+    { class: "missing" },
+    h(
+      "span",
+      {},
+      web
+        ? "Context couldn't search the web for this answer, so it only describes the screen."
+        : `Context couldn't check your ${kind} for this answer.`,
+    ),
+    button(web ? "Turn on web search" : `Connect ${kind}`, "secondary small", () => openSettings(web ? null : kind)),
   );
 }
 

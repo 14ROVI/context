@@ -37,6 +37,12 @@ pub fn answer(app: &AppHandle, entry: &Entry) {
 /// would have helped, such as `calendar`.
 pub fn empty(app: &AppHandle, needs: Option<&str>) {
     match needs {
+        Some("web") => show(
+            app,
+            "Context couldn't search the web",
+            "This screen needs facts from the web. Turn on web search in Settings.",
+            Click::Command(Command::OpenSettings(None)),
+        ),
         Some(kind) => show(
             app,
             &format!("Context can't check your {kind} yet"),

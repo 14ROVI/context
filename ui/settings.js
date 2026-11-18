@@ -32,6 +32,7 @@ export function renderSettings(state, extras = []) {
     { class: "settings" },
     h("h1", {}, "Settings"),
     modelSection(state),
+    webSection(state),
     extras,
     shortcutSection(state),
     privacySection(state),
@@ -278,6 +279,20 @@ function excludedApps(state) {
   const addButton = button("Add", "secondary", () => add(input.value), { disabled: !input.value.trim() });
 
   return [tags, h("div", { class: "row" }, input, addButton)];
+}
+
+function webSection(state) {
+  const note =
+    state.settings.provider === "anthropic"
+      ? "The model searches the web when the screen needs background, such as the news behind a stock move. Searches send short queries, not your screenshot, to the search service. Anthropic bills about $10 per 1,000 searches; Context allows 5 per capture."
+      : "The model searches the web when the screen needs background, such as the news behind a stock move. Searches send short queries, not your screenshot, to the search service. They count toward your plan usage, and OpenAI bills them separately on API keys.";
+  return section(
+    "Web search",
+    null,
+    toggle("Search the web for context", note, state.settings.webSearch, (value) =>
+      save(state, (next) => (next.webSearch = value)),
+    ),
+  );
 }
 
 function automaticSection(state) {

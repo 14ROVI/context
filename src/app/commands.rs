@@ -33,6 +33,7 @@ pub fn handlers() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         add_source,
         remove_source,
         search_catalog,
+        open_link,
     ]
 }
 
@@ -54,6 +55,13 @@ async fn get_screenshot(shared: State<'_, SharedState>, id: Uuid) -> Result<Opti
     Ok(entry
         .and_then(|entry| history::screenshot(&entry))
         .map(|jpeg| crate::model::data_url(&jpeg)))
+}
+
+/// Opens a web page an entry cites. The page passes the entry and the link's
+/// position; Rust looks up the address.
+#[tauri::command]
+fn open_link(shared: State<'_, SharedState>, id: Uuid, index: usize) {
+    shared.send(Command::OpenLink(id, index));
 }
 
 #[tauri::command]
