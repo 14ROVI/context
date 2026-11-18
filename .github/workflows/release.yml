@@ -112,7 +112,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(jq -r .version tauri.conf.json)
-          gh release create "v$version" dist/* \
+          # The Linux artifact keeps its deb/, rpm/ and appimage/ folders.
+          mapfile -t files < <(find dist -type f)
+          gh release create "v$version" "${files[@]}" \
             --target "$GITHUB_SHA" \
             --title "Context $version" \
             --notes "Context $version for Windows, macOS (universal) and Linux. The builds are not code-signed yet: Windows SmartScreen may warn before the installer runs, and on macOS you may need to right-click the app and choose Open, or allow it under System Settings > Privacy & Security."
