@@ -30,14 +30,14 @@ Debug builds on Windows keep a console for logs. Release builds run without one.
 
 ## Release a build
 
-The **Release (Windows)** GitHub Action builds the Windows installer on demand. Run it from the repository's Actions tab, or:
+The **Release** GitHub Action builds Context for Windows, macOS and Linux on demand. Run it from the repository's Actions tab, or:
 
 ```sh
 gh workflow run release.yml
 gh workflow run release.yml -f publish=true
 ```
 
-Each run uploads `Context_<version>_x64-setup.exe` as an artifact. With `publish=true` it also creates a draft GitHub release for the version in `tauri.conf.json`. Bump that version, and the one in `Cargo.toml`, before publishing. To build the installer locally, run `npx --yes @tauri-apps/cli@2 build --bundles nsis`. The installer bundles the OCR models from `models/`, which are not in git; the workflow downloads them and checks their SHA-256 hashes, and a local build needs them there too (`text-detection.onnx` and `text-recognition.onnx` from the [ocrs](https://github.com/robertknight/ocrs) project). The installer is not code-signed yet, so Windows SmartScreen warns before it runs. There is no auto-updater, because a private repository's releases are not public for an updater to fetch.
+Each run uploads the Windows NSIS installer, a universal macOS `.dmg`, and Linux `.deb`, `.rpm` and `.AppImage` bundles as artifacts. With `publish=true` it also creates a GitHub release for the version in `tauri.conf.json`, tagged at the commit that was built. Bump that version, and the one in `Cargo.toml`, before publishing; a release tag can only be used once. To build the installer locally, run `npx --yes @tauri-apps/cli@2 build --bundles nsis`. The installer bundles the OCR models from `models/`, which are not in git; the workflow downloads them and checks their SHA-256 hashes, and a local build needs them there too (`text-detection.onnx` and `text-recognition.onnx` from the [ocrs](https://github.com/robertknight/ocrs) project). No build is code-signed yet, so Windows SmartScreen warns before the installer runs and macOS Gatekeeper blocks the app until you allow it under **Privacy & Security**. There is no auto-updater, because a private repository's releases are not public for an updater to fetch.
 
 ## Use Context
 

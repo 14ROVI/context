@@ -25,7 +25,7 @@ Work through these in order unless something more urgent comes up. Tick items of
 
 ### Ready for other people
 
-- [x] **Release build.** The manual **Release (Windows)** action builds the NSIS installer and can create a draft release. Not done: code signing, and an auto-updater, which needs public releases.
+- [x] **Release build.** The manual **Release** action builds Windows, macOS and Linux bundles and can publish them as a GitHub release. Not done: code signing, and an auto-updater, which needs public releases.
 - [x] **Settings screen.** Provider, model, shortcut, privacy, automatic cards and start at login.
 - [ ] **Account edge cases.** Token refresh is verified with a live account, and usage-limit errors link to the usage page. Still unverified: the real usage-limit response, and sign-out with token revocation.
 - [ ] **macOS and Linux.** Build and check on macOS, X11 and Wayland. Deferred: Windows only for now.
