@@ -3,6 +3,8 @@ name = "context"
 version = "0.3.0"
 edition = "2024"
 description = "A desktop assistant that brings relevant information into view."
+license-file = "LICENSE"
+publish = false
 
 # Every dependency below is cross-platform. Tauri, `keyring`, `notify-rust` and
 # `xcap` choose their own Windows, macOS or Linux backend, so Context itself

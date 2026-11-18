@@ -1,0 +1,29 @@
+Copyright (c) 2026 Roan Vickerman. All rights reserved.
+
+This software, including its source code, documentation, designs, images and
+other files in this repository (the "Software"), is the exclusive property of
+the copyright holder.
+
+No license or other right is granted to you. Being able to view the Software,
+for example on GitHub, does not give you permission to use it. Without prior
+written permission from the copyright holder, you may not, in whole or in part:
+
+  - use, run, install or deploy the Software;
+  - copy, reproduce or mirror the Software;
+  - modify, translate, adapt or create derivative works from the Software;
+  - distribute, publish, sublicense, sell, rent, lend or otherwise make the
+    Software available to anyone;
+  - use the Software, or any part of it, to train, fine-tune or evaluate
+    machine learning models; or
+  - reverse engineer, decompile or disassemble any compiled form of the
+    Software, except where applicable law expressly forbids this restriction.
+
+Any permission the copyright holder grants must be in writing, may be limited
+in scope, and may be withdrawn at any time.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM OR IN CONNECTION WITH THE SOFTWARE.
+
+Third-party components included with or used by the Software remain under
+their own licenses.
