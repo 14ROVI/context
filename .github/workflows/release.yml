@@ -42,13 +42,13 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust-targets }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           key: ${{ matrix.name }}
 
@@ -89,7 +89,7 @@ jobs:
           CONTEXT_GOOGLE_CLIENT_SECRET: ${{ secrets.CONTEXT_GOOGLE_CLIENT_SECRET }}
 
       - name: Upload bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Context-${{ steps.version.outputs.version }}-${{ matrix.name }}
           path: ${{ matrix.bundle }}
@@ -100,9 +100,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
