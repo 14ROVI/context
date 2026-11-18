@@ -6,4 +6,4 @@ It uses your ChatGPT plan to analyze one screen capture on demand. It can search
 
 ## License
 
-Copyright (c) 2026 Roan Vickerman. All rights reserved. No use, copying, modification or distribution is permitted without written permission. See [LICENSE](LICENSE).
+Copyright (c) 2026 Roan Vickerman. Licensed under the [PolyForm Strict License 1.0.0](LICENSE): you may run it for noncommercial purposes, but you may not change it or share it. For commercial use, ask for permission.

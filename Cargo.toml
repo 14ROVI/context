@@ -3,7 +3,7 @@ name = "context"
 version = "0.3.0"
 edition = "2024"
 description = "A desktop assistant that brings relevant information into view."
-license-file = "LICENSE"
+license = "PolyForm-Strict-1.0.0"
 publish = false
 
 # Every dependency below is cross-platform. Tauri, `keyring`, `notify-rust` and
